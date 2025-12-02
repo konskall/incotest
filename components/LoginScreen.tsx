@@ -72,7 +72,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-start min-h-[100dvh] p-4 pt-6 md:pt-12 w-full max-w-md mx-auto animate-in slide-in-from-bottom-4 duration-500">
+    <div className="flex flex-col items-center justify-start min-h-[100dvh] p-4 pt-2 md:pt-6 w-full max-w-md mx-auto animate-in slide-in-from-bottom-4 duration-500">
       <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-blue-500/10 w-full p-8 border border-white/50">
         <div className="flex flex-col items-center mb-6">
            <img 
