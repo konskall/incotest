@@ -126,7 +126,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                      await navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(err => console.log("SW Register fail:", err));
                   }
 
-                  const currentToken = await getToken(messaging).catch(err => {
+                  const currentToken = await getToken(messaging).catch(() => {
                       return null;
                   });
 
