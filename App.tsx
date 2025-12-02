@@ -2,13 +2,27 @@ import React, { useState, useEffect } from 'react';
 import LoginScreen from './components/LoginScreen';
 import ChatScreen from './components/ChatScreen';
 import { ChatConfig } from './types';
+import { generateRoomKey } from './utils/helpers';
 
 const App: React.FC = () => {
   const [chatConfig, setChatConfig] = useState<ChatConfig | null>(null);
 
   useEffect(() => {
-     // Check local storage for auto-login attempt logic could go here.
-     // Currently we rely on LoginScreen to read from localStorage and pre-fill fields.
+     const storedPin = localStorage.getItem('chatPin');
+     const storedRoomName = localStorage.getItem('chatRoomName');
+     const storedUsername = localStorage.getItem('chatUsername');
+     const storedAvatar = localStorage.getItem('chatAvatarURL');
+
+     if (storedPin && storedRoomName && storedUsername) {
+       const roomKey = generateRoomKey(storedPin, storedRoomName);
+       setChatConfig({
+         username: storedUsername,
+         avatarURL: storedAvatar || '',
+         roomName: storedRoomName,
+         pin: storedPin,
+         roomKey: roomKey
+       });
+     }
   }, []);
 
   const handleJoin = (config: ChatConfig) => {
