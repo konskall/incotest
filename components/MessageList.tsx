@@ -292,13 +292,29 @@ const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boo
 }, (prevProps, nextProps) => {
     // Custom comparison function for React.memo
     // Returns true if props are equal (do not re-render)
-    return (
-        prevProps.isMe === nextProps.isMe &&
-        prevProps.msg.id === nextProps.msg.id &&
-        prevProps.msg.text === nextProps.msg.text &&
-        prevProps.msg.isEdited === nextProps.msg.isEdited &&
-        prevProps.msg.createdAt === nextProps.msg.createdAt
-    );
+    
+    // Check basic primitives first
+    if (prevProps.isMe !== nextProps.isMe ||
+        prevProps.msg.id !== nextProps.msg.id ||
+        prevProps.msg.text !== nextProps.msg.text ||
+        prevProps.msg.isEdited !== nextProps.msg.isEdited) {
+        return false;
+    }
+
+    // Check attachment changes
+    if (prevProps.msg.attachment !== nextProps.msg.attachment) {
+         // Deep check if object reference changed but content is same (rare but safe)
+         if (JSON.stringify(prevProps.msg.attachment) !== JSON.stringify(nextProps.msg.attachment)) {
+             return false;
+         }
+    }
+
+    // Check timestamp (Firestore timestamps are objects, so strict equality might fail)
+    const prevTime = prevProps.msg.createdAt?.seconds;
+    const nextTime = nextProps.msg.createdAt?.seconds;
+    if (prevTime !== nextTime) return false;
+
+    return true;
 });
 
 const MessageList: React.FC<MessageListProps> = ({ messages, currentUserUid, onEdit }) => {
