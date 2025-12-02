@@ -19,7 +19,7 @@ const LinkPreview: React.FC<{ url: string }> = ({ url }) => {
     const [error, setError] = useState(false);
 
     useEffect(() => {
-        let isActive = true; // Fix: Use local variable instead of state to track mounting
+        let isActive = true; 
         setLoading(true);
         setError(false);
         
@@ -72,7 +72,7 @@ const LinkPreview: React.FC<{ url: string }> = ({ url }) => {
                 )}
                 <div className="flex items-center gap-1.5 mt-2">
                     {data.logo?.url && (
-                        <img src={data.logo.url} className="w-3.5 h-3.5 rounded-sm object-contain" alt="" />
+                        <img src={data.logo.url} loading="lazy" className="w-3.5 h-3.5 rounded-sm object-contain" alt="" />
                     )}
                     <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
                         {data.publisher || new URL(url).hostname}
@@ -154,6 +154,7 @@ const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boo
                         title="YouTube video player"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
+                        loading="lazy"
                     ></iframe>
                </div>
             )}
@@ -188,6 +189,7 @@ const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boo
                     <img 
                         src={url} 
                         alt={name} 
+                        loading="lazy"
                         className="max-w-full rounded-lg shadow-sm border border-white/10 max-h-[300px] w-auto object-contain bg-black/5" 
                     />
                 </a>
@@ -232,6 +234,7 @@ const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boo
         <img 
             src={msg.avatarURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.username)}&background=${isMe ? '3b82f6' : '64748b'}&color=fff&rounded=true`}
             alt={msg.username}
+            loading="lazy"
             className="w-8 h-8 rounded-full shadow-sm object-cover border-2 border-white select-none bg-slate-200"
         />
 
