@@ -45,6 +45,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Track if it's the first load for instant scrolling
+  const isFirstLoad = useRef(true);
 
   // 1. Authentication & Network Status
   useEffect(() => {
@@ -285,8 +288,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
   // Scroll logic
   useEffect(() => {
-    if (!editingMessageId) {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!editingMessageId && messagesEndRef.current) {
+        // If it's the first load, scroll instantly to avoid "dizzying" scroll animation
+        if (isFirstLoad.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "auto" });
+            isFirstLoad.current = false;
+        } else {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
     }
   }, [messages, typingUsers, editingMessageId]); 
 
