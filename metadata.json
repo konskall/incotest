@@ -1,0 +1,5 @@
+{
+  "name": "Incognito Chat",
+  "description": "A modern, real-time encrypted chat application with private rooms, presence detection, and rich media support.",
+  "requestFramePermissions": []
+}
