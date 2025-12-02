@@ -397,9 +397,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     }
     updatePresence({ isTyping: false });
     
-    // Reset height immediately
+    // Reset height immediately to min-height to prevent jitter
     if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = '24px';
     }
 
     try {
