@@ -8,21 +8,22 @@ const App: React.FC = () => {
   const [chatConfig, setChatConfig] = useState<ChatConfig | null>(null);
 
   useEffect(() => {
-     const storedPin = localStorage.getItem('chatPin');
-     const storedRoomName = localStorage.getItem('chatRoomName');
-     const storedUsername = localStorage.getItem('chatUsername');
-     const storedAvatar = localStorage.getItem('chatAvatarURL');
+    // Auto-login logic: Check local storage for session details
+    const storedPin = localStorage.getItem('chatPin');
+    const storedRoomName = localStorage.getItem('chatRoomName');
+    const storedUsername = localStorage.getItem('chatUsername');
+    const storedAvatar = localStorage.getItem('chatAvatarURL');
 
-     if (storedPin && storedRoomName && storedUsername) {
-       const roomKey = generateRoomKey(storedPin, storedRoomName);
-       setChatConfig({
-         username: storedUsername,
-         avatarURL: storedAvatar || '',
-         roomName: storedRoomName,
-         pin: storedPin,
-         roomKey: roomKey
-       });
-     }
+    if (storedPin && storedRoomName && storedUsername) {
+      const roomKey = generateRoomKey(storedPin, storedRoomName);
+      setChatConfig({
+        username: storedUsername,
+        avatarURL: storedAvatar || '',
+        roomName: storedRoomName,
+        pin: storedPin,
+        roomKey: roomKey
+      });
+    }
   }, []);
 
   const handleJoin = (config: ChatConfig) => {
