@@ -46,7 +46,7 @@
         overscroll-behavior-y: none; /* Prevent pull-to-refresh bounce */
       }
       body {
-        height: 100dvh; /* Dynamic Viewport Height for mobile browsers */
+        min-height: 100dvh; /* Changed from height to min-height to allow scrolling */
         overscroll-behavior-y: none;
         -webkit-tap-highlight-color: transparent; /* Remove gray tap box on iOS */
       }
@@ -73,7 +73,7 @@
         border-bottom: 1px solid rgba(0, 0, 0, 0.05);
       }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.0",
@@ -86,9 +86,8 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-slate-50 text-slate-900 h-full overflow-hidden antialiased selection:bg-primary-200 selection:text-primary-900 touch-pan-x pan-y">
+  <body class="bg-slate-50 text-slate-900 h-full antialiased selection:bg-primary-200 selection:text-primary-900 touch-pan-x pan-y">
     <div id="root" class="h-full w-full"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
