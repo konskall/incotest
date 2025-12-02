@@ -83,7 +83,8 @@ const LinkPreview: React.FC<{ url: string }> = ({ url }) => {
     );
 };
 
-const MessageItem: React.FC<{ msg: Message; isMe: boolean; onEdit: (msg: Message) => void }> = ({ msg, isMe, onEdit }) => {
+// Memoized Message Item to prevent re-renders of the whole list
+const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boolean; onEdit: (msg: Message) => void }) => {
   const [showOptions, setShowOptions] = useState(false);
 
   const formatTime = (timestamp: any) => {
@@ -288,7 +289,17 @@ const MessageItem: React.FC<{ msg: Message; isMe: boolean; onEdit: (msg: Message
       </div>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+    // Custom comparison function for React.memo
+    // Returns true if props are equal (do not re-render)
+    return (
+        prevProps.isMe === nextProps.isMe &&
+        prevProps.msg.id === nextProps.msg.id &&
+        prevProps.msg.text === nextProps.msg.text &&
+        prevProps.msg.isEdited === nextProps.msg.isEdited &&
+        prevProps.msg.createdAt === nextProps.msg.createdAt
+    );
+});
 
 const MessageList: React.FC<MessageListProps> = ({ messages, currentUserUid, onEdit }) => {
   return (
