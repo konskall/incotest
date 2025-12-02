@@ -634,8 +634,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                         onKeyDown={handleKeyDown}
                         rows={1}
                         placeholder={selectedFile ? "Add a caption..." : (editingMessageId ? "Edit..." : "Message...")}
-                        className="w-full bg-slate-100 border-0 rounded-2xl px-3 py-1.5 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none resize-none max-h-[120px] overflow-y-auto leading-5 text-base"
-                        style={{ minHeight: '36px' }}
+                        className="w-full bg-slate-100 border-0 rounded-xl px-3 py-1 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none resize-none max-h-[120px] overflow-y-auto leading-5 text-base"
+                        style={{ minHeight: '24px' }}
                      />
                  </div>
                  
