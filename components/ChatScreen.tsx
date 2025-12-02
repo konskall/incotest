@@ -219,7 +219,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
       let lastMsg: Message | null = null;
       let hasNewMessageFromOthers = false;
 
-      snapshot.docChanges().forEach((change) => {
+      // Use for-of loop instead of forEach to ensure TypeScript correctly infers closure mutations
+      for (const change of snapshot.docChanges()) {
         if (change.type === "added") {
            const data = change.doc.data();
            // Ensure it's not a local optimistic write and not our own message
@@ -231,11 +232,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                    username: data.username, 
                    uid: data.uid,
                    avatarURL: data.avatarURL,
-                   createdAt: data.createdAt 
+                   createdAt: data.createdAt,
+                   attachment: data.attachment // Include attachment!
                };
            }
         }
-      });
+      }
 
       snapshot.forEach((doc) => {
         const data = doc.data();
