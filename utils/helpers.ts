@@ -24,10 +24,30 @@ export function generateRoomKey(pin: string, roomName: string): string {
 // Singleton AudioContext to prevent running out of hardware contexts
 let audioCtx: AudioContext | null = null;
 
+export function initAudio() {
+  try {
+    if (!audioCtx) {
+       audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    // Play a silent oscillator to fully unlock audio on iOS/Chrome without making noise
+    const oscillator = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0; // Silence
+    oscillator.connect(gain);
+    gain.connect(audioCtx.destination);
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.01);
+  } catch (e) {
+    // Ignore errors if audio is not supported
+  }
+}
+
 export function playBeep() {
   try {
     if (!audioCtx) {
-       // Initialize on first use
        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     
