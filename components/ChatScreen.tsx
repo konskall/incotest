@@ -123,16 +123,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
           const registerToken = async () => {
               try {
                   if ('serviceWorker' in navigator) {
-                     // We ignore errors here because in some dev environments SW registration might fail
-                     // or the file might be missing in specific bundler setups.
-                     await navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(err => console.log("SW Register fail (harmless for local notifications):", err));
+                     await navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(err => console.log("SW Register fail:", err));
                   }
 
-                  // We removed the 'vapidKey' option. It will try to use the default project config.
-                  // If you haven't generated a Web Push Certificate in Firebase Console, this might still fail,
-                  // but we catch it so it doesn't break the app.
                   const currentToken = await getToken(messaging).catch(err => {
-                      console.log("FCM Token generation failed (Push notifications won't work, but Local will):", err);
                       return null;
                   });
 
@@ -180,10 +174,19 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
         updatePresence();
     }, 30000);
 
+    const cleanup = () => {
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        const presRef = doc(db, "chats", config.roomKey, "presence", user.uid);
+        // Best effort delete on unmount
+        deleteDoc(presRef).catch(() => {});
+    };
+
+    window.addEventListener('beforeunload', cleanup);
+
     return () => {
         clearInterval(interval);
-        const presRef = doc(db, "chats", config.roomKey, "presence", user.uid);
-        deleteDoc(presRef).catch(() => {});
+        window.removeEventListener('beforeunload', cleanup);
+        cleanup();
     };
   }, [user, config.roomKey, updatePresence, isRoomReady]);
 
@@ -237,7 +240,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                    uid: data.uid,
                    avatarURL: data.avatarURL,
                    createdAt: data.createdAt,
-                   attachment: data.attachment // Include attachment!
+                   attachment: data.attachment
                };
            }
         }
@@ -263,11 +266,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
           playBeep();
           if (navigator.vibrate) navigator.vibrate(100);
 
-          // Local Notification Logic (Works when tab is hidden but app is running)
           if (document.hidden && notificationsEnabled) {
              const title = `New message from ${lastMsg.username}`;
              const body = lastMsg.attachment ? `Sent a file: ${lastMsg.attachment.name}` : lastMsg.text;
-             
              try {
                 new Notification(title, {
                     body: body,
@@ -289,7 +290,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
   // Scroll logic
   useEffect(() => {
     if (!editingMessageId && messagesEndRef.current) {
-        // If it's the first load, scroll instantly to avoid "dizzying" scroll animation
         if (isFirstLoad.current) {
             messagesEndRef.current.scrollIntoView({ behavior: "auto" });
             isFirstLoad.current = false;
@@ -303,6 +303,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
+      // If content is huge, max 120px. 
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [inputText]);
@@ -312,23 +313,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
           alert('This browser does not support desktop notifications.');
           return;
       }
-
-      if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
-          alert('Notifications require HTTPS (or localhost).');
-          return;
-      }
-
       try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
               setNotificationsEnabled(true);
               new Notification("Notifications Enabled", { body: "You will be notified when the tab is in the background." });
           } else if (permission === 'denied') {
-              alert("Notifications are blocked in your browser settings. Please enable them manually.");
+              alert("Notifications are blocked in your browser settings.");
           }
       } catch (error) {
           console.error("Error requesting permission", error);
-          alert("Error requesting notification permissions.");
       }
   };
 
@@ -369,17 +363,18 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
       }, 2000);
   };
 
-  const handleEditMessage = (msg: Message) => {
+  // Memoized to prevent re-rendering MessageList on every keystroke
+  const handleEditMessage = useCallback((msg: Message) => {
       setInputText(msg.text);
       setEditingMessageId(msg.id);
       setSelectedFile(null);
       textareaRef.current?.focus();
-  };
+  }, []);
 
-  const cancelEdit = () => {
+  const cancelEdit = useCallback(() => {
       setEditingMessageId(null);
       setInputText('');
-  };
+  }, []);
 
   const handleSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -391,12 +386,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     setShowEmoji(false);
     setIsUploading(true);
     
+    // Maintain focus on mobile after send to keep keyboard open
+    if (textareaRef.current) {
+        textareaRef.current.focus();
+    }
+    
     if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = null;
     }
     updatePresence({ isTyping: false });
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    
+    // Reset height immediately
+    if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+    }
 
     try {
       if (editingMessageId) {
@@ -450,7 +454,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     }
   };
 
-  // Improved Delete Chat - Handles permissions gracefully and batch limits
   const handleDeleteChat = async () => {
     if (!config.roomKey) return;
     setIsDeleting(true);
@@ -458,13 +461,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     try {
         const chatRef = doc(db, "chats", config.roomKey);
         
-        // 1. Delete contents (Messages & Presence & Tokens)
-        // Helper to delete a collection in batches
         const deleteCollection = async (collName: string) => {
             const collRef = collection(chatRef, collName);
             const snapshot = await getDocs(collRef);
-            
-            // Firestore batch limit is 500
             const chunk = 400; 
             for (let i = 0; i < snapshot.docs.length; i += chunk) {
                 const batch = writeBatch(db);
@@ -473,31 +472,25 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             }
         };
 
-        // Try deleting subcollections first
         await Promise.allSettled([
             deleteCollection("presence"),
             deleteCollection("messages"),
             deleteCollection("fcm_tokens")
         ]);
 
-        // 2. Try deleting the room document
         try {
             await deleteDoc(chatRef);
         } catch (roomError) {
-            console.warn("Could not delete room doc (likely permission issue), but contents cleared.", roomError);
+            console.warn("Could not delete room doc", roomError);
         }
 
-        // SUCCESS: Exit the chat.
-        // NOTE: This unmounts the component. We must NOT update state after this.
         onExit(); 
     } catch (error) {
         console.error("Delete failed", error);
         alert("Error clearing chat. Please try again.");
-        // Only safe to update state if we didn't exit
         setIsDeleting(false);
         setShowDeleteModal(false);
     } 
-    // No 'finally' block to update state, as component might be unmounted on success
   };
 
   const handleEmojiSelect = (emoji: string) => {
@@ -505,8 +498,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
   };
 
   return (
-    // Use fixed inset-0 on mobile to lock the view preventing body scroll
-    // On desktop (md), use relative positioning and standard flex layout
     <div className="fixed inset-0 flex flex-col h-[100dvh] w-full bg-slate-100 max-w-5xl mx-auto shadow-2xl overflow-hidden z-50 md:relative md:inset-auto md:rounded-2xl md:my-4 md:h-[95vh] md:border border-white/40">
       {isOffline && (
         <div className="bg-red-500 text-white text-center py-1 text-sm font-bold animate-pulse absolute top-0 w-full z-50">
@@ -514,7 +505,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
         </div>
       )}
 
-      {/* Header: sticky with top padding for safe area (iPhone Notch) */}
       <header className="glass-panel px-3 py-3 flex items-center justify-between z-10 sticky top-0 shadow-sm pt-[calc(0.75rem+env(safe-area-inset-top))]">
         <div className="flex items-center gap-3 overflow-hidden">
              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg flex-shrink-0">
@@ -556,8 +546,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
         </div>
       </header>
 
-      {/* Main content: overscroll-contain prevents scrolling parent on mobile */}
-      {/* Added pb-20 to ensure last message is not hidden behind footer */}
       <main className="flex-1 overflow-y-auto overscroll-contain p-4 pb-20 bg-slate-50/50" style={{backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
         <MessageList 
             messages={messages} 
@@ -567,7 +555,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
         <div ref={messagesEndRef} />
       </main>
 
-      {/* Footer: safe area padding bottom (iPhone Home Bar) */}
       <footer className="bg-white p-1.5 border-t border-slate-200 shadow-lg z-20 relative pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
          {typingUsers.length > 0 && (
              <div className="absolute -top-6 left-6 text-xs text-slate-500 bg-white/80 backdrop-blur px-2 py-0.5 rounded-t-lg animate-pulse flex items-center gap-1">
@@ -646,8 +633,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                         onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
                         rows={1}
-                        placeholder={selectedFile ? "Add a caption..." : (editingMessageId ? "Edit..." : "Message...")}
-                        className="w-full bg-slate-100 border-0 rounded-2xl px-4 py-1 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none resize-none max-h-[120px] overflow-y-auto leading-5 text-base"
+                        placeholder={selectedFile ? "Add caption..." : (editingMessageId ? "Edit..." : "Message...")}
+                        className="w-full bg-slate-100 border-0 rounded-2xl px-3 py-[4px] focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none resize-none max-h-[120px] overflow-y-auto leading-none text-base"
                         style={{ minHeight: '24px' }}
                      />
                  </div>
@@ -655,12 +642,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                  <button 
                     onClick={() => handleSend()}
                     disabled={(!inputText.trim() && !selectedFile) || isOffline || isUploading || !isRoomReady}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white p-2.5 mb-1 rounded-full shadow-lg shadow-blue-500/30 transition-all transform active:scale-95 flex items-center justify-center flex-shrink-0"
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white p-2 mb-0.5 rounded-full shadow-lg shadow-blue-500/30 transition-all transform active:scale-95 flex items-center justify-center flex-shrink-0"
                  >
                      {isUploading ? (
                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                      ) : (
-                         <Send size={20} />
+                         <Send size={18} />
                      )}
                  </button>
              </div>
@@ -676,7 +663,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                     </div>
                     <h3 className="text-xl font-bold text-slate-800">Delete Conversation?</h3>
                     <p className="text-slate-500 text-sm">
-                        This will permanently delete the room and all messages for everyone. This action cannot be undone.
+                        Permanently delete the room and all messages for everyone?
                     </p>
                     <div className="flex gap-3 w-full mt-2">
                         <button 
