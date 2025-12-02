@@ -612,7 +612,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                  {!editingMessageId && (
                     <button 
                         onClick={() => fileInputRef.current?.click()}
-                        className={`p-2 sm:p-3 rounded-full mb-1 transition flex-shrink-0 ${selectedFile ? 'text-blue-500 bg-blue-50' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}
+                        className={`p-2 rounded-full mb-1 transition flex-shrink-0 ${selectedFile ? 'text-blue-500 bg-blue-50' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}
                         title="Attach File"
                     >
                         <Paperclip size={24} />
@@ -621,7 +621,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
                  <button 
                     onClick={() => setShowEmoji(!showEmoji)}
-                    className="p-2 sm:p-3 mb-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition hidden sm:block flex-shrink-0"
+                    className="p-2 mb-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition hidden sm:block flex-shrink-0"
                  >
                      <Smile size={24} />
                  </button>
@@ -634,15 +634,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                         onKeyDown={handleKeyDown}
                         rows={1}
                         placeholder={selectedFile ? "Add a caption..." : (editingMessageId ? "Edit..." : "Message...")}
-                        className="w-full bg-slate-100 border-0 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none resize-none max-h-[120px] overflow-y-auto leading-normal text-base"
-                        style={{ minHeight: '48px' }}
+                        className="w-full bg-slate-100 border-0 rounded-2xl px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none resize-none max-h-[120px] overflow-y-auto leading-normal text-base"
+                        style={{ minHeight: '40px' }}
                      />
                  </div>
                  
                  <button 
                     onClick={() => handleSend()}
                     disabled={(!inputText.trim() && !selectedFile) || isOffline || isUploading || !isRoomReady}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white p-3 mb-1 rounded-full shadow-lg shadow-blue-500/30 transition-all transform active:scale-95 flex items-center justify-center flex-shrink-0"
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white p-2.5 mb-1 rounded-full shadow-lg shadow-blue-500/30 transition-all transform active:scale-95 flex items-center justify-center flex-shrink-0"
                  >
                      {isUploading ? (
                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
