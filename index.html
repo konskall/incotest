@@ -42,13 +42,14 @@
     <style>
       /* Reset & Mobile Optimizations */
       html {
-        height: 100%;
-        overscroll-behavior-y: none; /* Prevent pull-to-refresh bounce */
+        /* Removed height: 100% and overscroll-behavior to allow native scrolling on iOS */
+        -webkit-text-size-adjust: 100%;
       }
       body {
-        min-height: 100dvh; /* Changed from height to min-height to allow scrolling */
-        overscroll-behavior-y: none;
+        min-height: 100dvh;
         -webkit-tap-highlight-color: transparent; /* Remove gray tap box on iOS */
+        /* Ensure scrolling is smooth on iOS */
+        -webkit-overflow-scrolling: touch; 
       }
       
       /* Custom Scrollbar */
@@ -87,8 +88,8 @@
 }
 </script>
 </head>
-  <body class="bg-slate-50 text-slate-900 h-full antialiased selection:bg-primary-200 selection:text-primary-900 touch-pan-x pan-y">
-    <div id="root" class="h-full w-full"></div>
+  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-primary-200 selection:text-primary-900">
+    <div id="root" class="w-full"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
