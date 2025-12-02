@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, deleteDoc, getDocs, writeBatch, updateDoc, getDoc, DocumentReference } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, deleteDoc, getDocs, writeBatch, updateDoc, getDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { getToken } from 'firebase/messaging';
 import { db, auth, messaging } from '../services/firebase';
@@ -253,12 +253,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
       setMessages(msgs);
 
-      if (hasNewMessageFromOthers) {
+      if (hasNewMessageFromOthers && lastMsg) {
           playBeep();
           if (navigator.vibrate) navigator.vibrate(100);
 
           // Local Notification Logic (Works when tab is hidden but app is running)
-          if (document.hidden && notificationsEnabled && lastMsg) {
+          if (document.hidden && notificationsEnabled) {
              const title = `New message from ${lastMsg.username}`;
              const body = lastMsg.attachment ? `Sent a file: ${lastMsg.attachment.name}` : lastMsg.text;
              
