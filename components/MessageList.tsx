@@ -3,13 +3,14 @@ import { Message } from '../types';
 import { getYouTubeId } from '../utils/helpers';
 import { 
   FileText, Download, MoreVertical, Edit2, 
-  File, FileAudio, FileVideo, FileCode, FileArchive 
+  File, FileAudio, FileVideo, FileCode, FileArchive, SmilePlus 
 } from 'lucide-react';
 
 interface MessageListProps {
   messages: Message[];
   currentUserUid: string;
   onEdit: (msg: Message) => void;
+  onReact: (msg: Message, emoji: string) => void;
 }
 
 // -- Link Preview Component --
@@ -84,8 +85,11 @@ const LinkPreview: React.FC<{ url: string }> = ({ url }) => {
 };
 
 // Memoized Message Item to prevent re-renders of the whole list
-const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boolean; onEdit: (msg: Message) => void }) => {
+const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact }: { msg: Message; isMe: boolean; currentUid: string; onEdit: (msg: Message) => void; onReact: (msg: Message, emoji: string) => void }) => {
   const [showOptions, setShowOptions] = useState(false);
+  const [showReactions, setShowReactions] = useState(false);
+
+  const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
   const formatTime = (timestamp: any) => {
     if (!timestamp) return '...'; // Pending
@@ -228,7 +232,7 @@ const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boo
 
   return (
     <div className={`flex w-full mb-4 animate-in slide-in-from-bottom-2 duration-300 group ${isMe ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex max-w-[85%] md:max-w-[70%] ${isMe ? 'flex-row-reverse' : 'flex-row'} items-end gap-2`}>
+      <div className={`flex max-w-[85%] md:max-w-[70%] ${isMe ? 'flex-row-reverse' : 'flex-row'} items-end gap-2 relative`}>
         
         {/* Avatar */}
         <img 
@@ -264,39 +268,92 @@ const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boo
             </div>
         )}
 
-        {/* Bubble */}
-        <div className={`
-            relative px-4 py-2.5 rounded-2xl shadow-sm text-sm md:text-base min-w-0
-            ${isMe 
-                ? 'bg-blue-600 text-white rounded-br-none shadow-blue-500/20' 
-                : 'bg-white text-slate-800 rounded-bl-none shadow-slate-200 border border-slate-100'}
-        `}>
-            {!isMe && <p className="text-[10px] font-bold text-slate-400 mb-0.5 tracking-wide select-none">{msg.username}</p>}
-            
-            {/* Attachment Display */}
-            {renderAttachment()}
+        {/* Reaction Button (Hidden by default, visible on hover or if reaction menu open) */}
+        <div className={`relative flex items-center h-full self-center ${isMe ? 'mr-1' : 'ml-1'}`}>
+             <button 
+                onClick={() => setShowReactions(!showReactions)}
+                className={`p-1 text-slate-400 hover:text-orange-500 rounded-full transition-all ${showReactions ? 'opacity-100 text-orange-500 bg-orange-50' : 'opacity-0 group-hover:opacity-100'}`}
+             >
+                <SmilePlus size={18} />
+             </button>
+             
+             {showReactions && (
+                 <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowReactions(false)} />
+                    <div className={`absolute bottom-8 ${isMe ? 'right-0' : 'left-0'} flex gap-1 bg-white p-1.5 rounded-full shadow-xl border border-slate-100 z-50 animate-in zoom-in-95 duration-200`}>
+                        {QUICK_REACTIONS.map(emoji => (
+                            <button
+                                key={emoji}
+                                onClick={() => { onReact(msg, emoji); setShowReactions(false); }}
+                                className="w-8 h-8 flex items-center justify-center text-lg hover:bg-slate-100 rounded-full transition hover:scale-125"
+                            >
+                                {emoji}
+                            </button>
+                        ))}
+                    </div>
+                 </>
+             )}
+        </div>
 
-            {/* Text Display */}
-            {msg.text && (
-                <div className={`leading-relaxed whitespace-pre-wrap break-words ${msg.attachment ? 'mt-2 pt-2 border-t ' + (isMe ? 'border-white/20' : 'border-slate-100') : ''}`}>
-                    {renderContent(msg.text)}
+        {/* Bubble */}
+        <div className={`relative flex flex-col min-w-0 ${isMe ? 'items-end' : 'items-start'}`}>
+            <div className={`
+                relative px-4 py-2.5 rounded-2xl shadow-sm text-sm md:text-base min-w-0
+                ${isMe 
+                    ? 'bg-blue-600 text-white rounded-br-none shadow-blue-500/20' 
+                    : 'bg-white text-slate-800 rounded-bl-none shadow-slate-200 border border-slate-100'}
+            `}>
+                {!isMe && <p className="text-[10px] font-bold text-slate-400 mb-0.5 tracking-wide select-none">{msg.username}</p>}
+                
+                {/* Attachment Display */}
+                {renderAttachment()}
+
+                {/* Text Display */}
+                {msg.text && (
+                    <div className={`leading-relaxed whitespace-pre-wrap break-words ${msg.attachment ? 'mt-2 pt-2 border-t ' + (isMe ? 'border-white/20' : 'border-slate-100') : ''}`}>
+                        {renderContent(msg.text)}
+                    </div>
+                )}
+
+                {/* Timestamp & Edit Indicator */}
+                <div className={`flex items-center justify-end gap-1 mt-1 select-none ${isMe ? 'text-blue-200' : 'text-slate-400'}`}>
+                    {msg.isEdited && <span className="text-[9px] italic opacity-80">(edited)</span>}
+                    <span className="text-[10px] font-medium">{timeString}</span>
+                </div>
+            </div>
+
+            {/* Reactions Display */}
+            {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                    {Object.entries(msg.reactions).map(([emoji, uids]) => {
+                        if (uids.length === 0) return null;
+                        const iReacted = uids.includes(currentUid);
+                        return (
+                            <button 
+                                key={emoji}
+                                onClick={() => onReact(msg, emoji)}
+                                className={`
+                                    flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs shadow-sm border transition-all hover:scale-105
+                                    ${iReacted 
+                                        ? 'bg-blue-100 border-blue-200 text-slate-800' 
+                                        : 'bg-white border-slate-200 text-slate-600'}
+                                `}
+                            >
+                                <span>{emoji}</span>
+                                <span className={`font-semibold text-[10px] ${iReacted ? 'text-blue-600' : 'text-slate-500'}`}>{uids.length}</span>
+                            </button>
+                        );
+                    })}
                 </div>
             )}
-
-            {/* Timestamp & Edit Indicator */}
-            <div className={`flex items-center justify-end gap-1 mt-1 select-none ${isMe ? 'text-blue-200' : 'text-slate-400'}`}>
-                {msg.isEdited && <span className="text-[9px] italic opacity-80">(edited)</span>}
-                <span className="text-[10px] font-medium">{timeString}</span>
-            </div>
         </div>
       </div>
     </div>
   );
 }, (prevProps, nextProps) => {
     // Custom comparison function for React.memo
-    // Returns true if props are equal (do not re-render)
     
-    // Check basic primitives first
+    // Check basic primitives
     if (prevProps.isMe !== nextProps.isMe ||
         prevProps.msg.id !== nextProps.msg.id ||
         prevProps.msg.text !== nextProps.msg.text ||
@@ -304,7 +361,7 @@ const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boo
         return false;
     }
 
-    // Check attachment changes - Optimize by checking key props instead of full JSON stringify
+    // Check attachment changes
     if (prevProps.msg.attachment !== nextProps.msg.attachment) {
          if (prevProps.msg.attachment?.url !== nextProps.msg.attachment?.url ||
              prevProps.msg.attachment?.name !== nextProps.msg.attachment?.name) {
@@ -312,7 +369,14 @@ const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boo
          }
     }
 
-    // Check timestamp safely (handle nulls/sentinels)
+    // Check reactions
+    // Simple JSON stringify comparison is usually fast enough for small reaction objects
+    // If reactions changed, we MUST re-render
+    if (JSON.stringify(prevProps.msg.reactions) !== JSON.stringify(nextProps.msg.reactions)) {
+        return false;
+    }
+
+    // Check timestamp
     const getSeconds = (ts: any) => {
         if (!ts) return 0;
         if (ts.seconds) return ts.seconds;
@@ -330,7 +394,7 @@ const MessageItem = React.memo(({ msg, isMe, onEdit }: { msg: Message; isMe: boo
     return true;
 });
 
-const MessageList: React.FC<MessageListProps> = ({ messages, currentUserUid, onEdit }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, currentUserUid, onEdit, onReact }) => {
   return (
     <div className="flex flex-col justify-end min-h-full pb-2">
       {messages.length === 0 ? (
@@ -344,7 +408,9 @@ const MessageList: React.FC<MessageListProps> = ({ messages, currentUserUid, onE
             key={msg.id} 
             msg={msg} 
             isMe={msg.uid === currentUserUid}
+            currentUid={currentUserUid}
             onEdit={onEdit}
+            onReact={onReact}
           />
         ))
       )}
