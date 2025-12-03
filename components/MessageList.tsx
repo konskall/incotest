@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Message } from '../types';
 import { getYouTubeId } from '../utils/helpers';
 import { 
-  FileText, Download, MoreVertical, Edit2, 
+  FileText, Download, Edit2, 
   File, FileAudio, FileVideo, FileCode, FileArchive, SmilePlus, Reply 
 } from 'lucide-react';
 
@@ -87,7 +87,6 @@ const LinkPreview: React.FC<{ url: string }> = ({ url }) => {
 
 // Memoized Message Item to prevent re-renders of the whole list
 const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onReply }: { msg: Message; isMe: boolean; currentUid: string; onEdit: (msg: Message) => void; onReact: (msg: Message, emoji: string) => void; onReply: (msg: Message) => void; }) => {
-  const [showOptions, setShowOptions] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
 
   const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
@@ -258,34 +257,8 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
             className="w-8 h-8 rounded-full shadow-sm object-cover border-2 border-white select-none bg-slate-200"
         />
 
-        {/* Message Actions (Edit for self) */}
-        {isMe && (
-            <div className={`relative transition-opacity flex flex-col justify-center ${showOptions ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                <button 
-                    onClick={() => setShowOptions(!showOptions)}
-                    className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-slate-100 rounded-full transition"
-                >
-                    <MoreVertical size={16} />
-                </button>
-                {showOptions && (
-                    <div className="absolute bottom-8 right-0 bg-white shadow-xl border border-slate-100 rounded-lg p-1 z-50 flex flex-col min-w-[120px] animate-in zoom-in-95 duration-100">
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); onEdit(msg); setShowOptions(false); }}
-                            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-md transition text-left"
-                        >
-                            <Edit2 size={14} /> Edit
-                        </button>
-                    </div>
-                )}
-                {/* Overlay to close menu when clicking outside */}
-                {showOptions && (
-                    <div className="fixed inset-0 z-40 cursor-default" onClick={() => setShowOptions(false)} />
-                )}
-            </div>
-        )}
-
-        {/* Reaction & Reply Buttons Group */}
-        <div className={`relative flex items-center h-full self-center gap-1 ${isMe ? 'mr-1' : 'ml-1'}`}>
+        {/* Vertical Actions Stack (Reply, React, Edit) */}
+        <div className={`flex flex-col gap-1 items-center self-end mb-1 ${isMe ? 'mr-0.5' : 'ml-0.5'}`}>
              
              {/* Reply Button */}
              <button
@@ -293,22 +266,27 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
                 className={`p-1 text-slate-400 hover:text-blue-500 rounded-full transition-all ${showReactions ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'}`}
                 title="Reply"
              >
-                <Reply size={18} />
+                <Reply size={16} />
              </button>
 
              {/* Reaction Button */}
-             <button 
-                onClick={() => setShowReactions(!showReactions)}
-                className={`p-1 text-slate-400 hover:text-orange-500 rounded-full transition-all ${showReactions ? 'opacity-100 text-orange-500 bg-orange-50' : 'opacity-0 group-hover:opacity-100'}`}
-                title="React"
-             >
-                <SmilePlus size={18} />
-             </button>
-             
-             {showReactions && (
-                 <>
+             <div className="relative">
+                 <button 
+                    onClick={() => setShowReactions(!showReactions)}
+                    className={`p-1 text-slate-400 hover:text-orange-500 rounded-full transition-all ${showReactions ? 'opacity-100 text-orange-500 bg-orange-50' : 'opacity-0 group-hover:opacity-100'}`}
+                    title="React"
+                 >
+                    <SmilePlus size={16} />
+                 </button>
+                 
+                 {/* Backdrop */}
+                 {showReactions && (
                     <div className="fixed inset-0 z-40" onClick={() => setShowReactions(false)} />
-                    <div className={`absolute bottom-8 ${isMe ? 'right-0' : 'left-0'} flex gap-1 bg-white p-1.5 rounded-full shadow-xl border border-slate-100 z-50 animate-in zoom-in-95 duration-200`}>
+                 )}
+                 
+                 {/* Reaction Popover */}
+                 {showReactions && (
+                    <div className={`absolute bottom-0 ${isMe ? 'right-8' : 'left-8'} flex gap-1 bg-white p-1.5 rounded-full shadow-xl border border-slate-100 z-50 animate-in zoom-in-95 duration-200 w-max`}>
                         {QUICK_REACTIONS.map(emoji => (
                             <button
                                 key={emoji}
@@ -319,7 +297,18 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
                             </button>
                         ))}
                     </div>
-                 </>
+                 )}
+             </div>
+
+             {/* Edit Button (Directly exposed for 'Me') */}
+             {isMe && (
+                <button 
+                    onClick={() => onEdit(msg)}
+                    className={`p-1 text-slate-400 hover:text-blue-500 rounded-full transition-all opacity-0 group-hover:opacity-100`}
+                    title="Edit"
+                >
+                    <Edit2 size={16} />
+                </button>
              )}
         </div>
 
