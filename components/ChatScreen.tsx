@@ -126,6 +126,26 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     checkAndCreateRoom();
   }, [user, config.roomKey, config.roomName]);
 
+  // NEW: Listen for Room Deletion (Kick functionality)
+  useEffect(() => {
+    // Only listen if room is ready and WE are not the ones currently deleting it
+    if (!config.roomKey || !isRoomReady || isDeleting) return;
+
+    const roomRef = doc(db, "chats", config.roomKey);
+    
+    const unsubscribe = onSnapshot(roomRef, (docSnap) => {
+        // If document doesn't exist, it means it was deleted
+        if (!docSnap.exists()) {
+            alert("⚠️ The chat room has been deleted by the administrator.");
+            onExit();
+        }
+    }, (error) => {
+        console.log("Room existence listener error:", error);
+    });
+
+    return () => unsubscribe();
+  }, [config.roomKey, isRoomReady, isDeleting, onExit]);
+
   // 2. Notification Setup (FCM Token Registration)
   useEffect(() => {
       if (notificationsEnabled && user && messaging && isRoomReady) {
