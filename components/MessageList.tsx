@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Message } from '../types';
 import { getYouTubeId } from '../utils/helpers';
@@ -59,35 +60,35 @@ const LinkPreview: React.FC<{ url: string }> = ({ url }) => {
             href={url} 
             target="_blank" 
             rel="noopener noreferrer" 
-            className="flex items-center mt-2 bg-white/95 border border-black/10 rounded-lg overflow-hidden hover:bg-blue-50 transition-colors w-full max-w-[280px] h-20 shadow-sm text-slate-800 no-underline group/card"
+            className="flex items-stretch mt-2 bg-white/95 border border-black/10 rounded-lg overflow-hidden hover:bg-blue-50 transition-colors w-full md:max-w-[360px] min-h-[80px] shadow-sm text-slate-800 no-underline group/card"
         >
-            {/* Image Section - Fixed small square on left */}
+            {/* Image Section - Fixed width on left, covers height */}
             {data.image?.url ? (
                 <div 
-                    className="h-20 w-20 flex-shrink-0 bg-cover bg-center bg-no-repeat bg-slate-100" 
+                    className="w-24 flex-shrink-0 bg-cover bg-center bg-no-repeat bg-slate-100 border-r border-slate-100" 
                     style={{backgroundImage: `url(${data.image.url})`}} 
                 />
             ) : (
-                <div className="h-20 w-20 flex-shrink-0 flex items-center justify-center bg-slate-100 text-slate-400">
+                <div className="w-20 flex-shrink-0 flex items-center justify-center bg-slate-100 text-slate-400 border-r border-slate-100">
                     <ExternalLink size={24} />
                 </div>
             )}
             
             {/* Content Section */}
-            <div className="flex-1 p-2 flex flex-col justify-center min-w-0 h-full">
+            <div className="flex-1 p-2.5 flex flex-col justify-center min-w-0">
                 <h3 className="font-bold text-xs truncate leading-tight group-hover/card:text-blue-600 transition-colors">
                     {data.title}
                 </h3>
                 {data.description && (
-                    <p className="text-[10px] text-slate-500 line-clamp-2 mt-0.5 leading-snug">
+                    <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-snug">
                         {data.description}
                     </p>
                 )}
-                <div className="flex items-center gap-1 mt-auto pt-1">
+                <div className="flex items-center gap-1.5 mt-2 pt-0.5">
                     {data.logo?.url && (
-                        <img src={data.logo.url} loading="lazy" className="w-3 h-3 rounded-sm object-contain" alt="" />
+                        <img src={data.logo.url} loading="lazy" className="w-3.5 h-3.5 rounded-sm object-contain" alt="" />
                     )}
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider truncate">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider truncate">
                         {data.publisher || new URL(url).hostname}
                     </span>
                 </div>
@@ -175,9 +176,9 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
                 })}
             </span>
 
-            {/* YouTube Embed - Constrained Width */}
+            {/* YouTube Embed - Responsive Width */}
             {ytId && (
-               <div className="relative w-full max-w-[280px] aspect-video rounded-lg overflow-hidden shadow-md bg-black/5 mt-1">
+               <div className="relative w-full md:max-w-[400px] aspect-video rounded-lg overflow-hidden shadow-md bg-black/5 mt-1">
                     <iframe
                         className="absolute inset-0 w-full h-full"
                         src={`https://www.youtube.com/embed/${ytId}`}
@@ -258,7 +259,7 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
 
   return (
     <div id={`msg-${msg.id}`} className={`flex w-full mb-4 animate-in slide-in-from-bottom-2 duration-300 group ${isMe ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex max-w-[85%] md:max-w-[70%] ${isMe ? 'flex-row-reverse' : 'flex-row'} items-end gap-2 relative`}>
+      <div className={`flex max-w-[90%] md:max-w-[70%] ${isMe ? 'flex-row-reverse' : 'flex-row'} items-end gap-2 relative`}>
         
         {/* Avatar */}
         <img 
@@ -326,7 +327,7 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
         {/* Bubble */}
         <div className={`relative flex flex-col min-w-0 ${isMe ? 'items-end' : 'items-start'}`}>
             <div className={`chat-bubble
-                relative px-4 py-2.5 rounded-2xl shadow-sm text-sm md:text-base min-w-0 transition-all
+                relative px-4 py-2.5 rounded-2xl shadow-sm text-sm md:text-base min-w-0 transition-all w-full
                 ${isMe 
                     ? 'bg-blue-600 text-white rounded-br-none shadow-blue-500/20' 
                     : 'bg-white text-slate-800 rounded-bl-none shadow-slate-200 border border-slate-100'}
