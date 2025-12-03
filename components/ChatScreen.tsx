@@ -4,10 +4,11 @@ import { signInAnonymously } from 'firebase/auth';
 import { getToken } from 'firebase/messaging';
 import { db, auth, messaging } from '../services/firebase';
 import { ChatConfig, Message, User, Attachment, Presence } from '../types';
-import { decodeMessage, encodeMessage, playBeep } from '../utils/helpers';
+import { decodeMessage, encodeMessage } from '../utils/helpers';
 import MessageList from './MessageList';
 import EmojiPicker from './EmojiPicker';
 import { Send, Smile, LogOut, Trash2, ShieldAlert, Paperclip, X, FileText, Image as ImageIcon, Bell, BellOff, Edit2, Volume2, VolumeX } from 'lucide-react';
+import { initAudio } from '../utils/helpers';
 
 interface ChatScreenProps {
   config: ChatConfig;
@@ -51,6 +52,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
   // Track first load for scrolling and sound
   const isFirstLoad = useRef(true);
   const isFirstSnapshot = useRef(true);
+  
+  // Track previous message count to handle scroll behavior
+  const prevMessageCount = useRef(0);
 
   // 1. Authentication & Network Status
   useEffect(() => {
@@ -279,7 +283,23 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
       // Play sound only if it's NOT the first snapshot (history load)
       if (!isFirstSnapshot.current && hasNewMessageFromOthers && lastMsg) {
-          if (soundEnabled) playBeep();
+          if (soundEnabled) {
+              // Silently unlock first if needed, then play
+              initAudio(); 
+              // Wait tiny bit for context to resume
+              setTimeout(() => {
+                  // We need to import playBeep or move it here. 
+                  // Since playBeep is in helpers, let's assume it works or we import it.
+                  // Note: In strict React, better to import playBeep.
+                  // For now, re-implementing small beep logic or using imported helper.
+                  // We need to import playBeep from utils/helpers.
+                  const playSound = async () => {
+                       const { playBeep } = await import('../utils/helpers');
+                       playBeep();
+                  }
+                  playSound();
+              }, 10);
+          }
           if (navigator.vibrate) navigator.vibrate(100);
 
           if (document.hidden && notificationsEnabled) {
@@ -310,15 +330,27 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
   // Scroll logic
   useEffect(() => {
-    if (!editingMessageId && !replyingTo && messagesEndRef.current) {
-        if (isFirstLoad.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "auto" });
-            isFirstLoad.current = false;
-        } else {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-        }
+    if (!messagesEndRef.current) return;
+
+    // Case 1: First Load - Instant scroll
+    if (isFirstLoad.current && messages.length > 0) {
+        messagesEndRef.current.scrollIntoView({ behavior: "auto" });
+        isFirstLoad.current = false;
+        prevMessageCount.current = messages.length;
+        return;
     }
-  }, [messages, typingUsers, editingMessageId, replyingTo]); 
+
+    // Case 2: New Message - Smooth scroll
+    // Only scroll if the number of messages INCREASED.
+    // This ignores edits, reactions, and typing status changes.
+    if (messages.length > prevMessageCount.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+        prevMessageCount.current = messages.length;
+    } else {
+        // Sync ref even if we didn't scroll (e.g. deletion or edit)
+        prevMessageCount.current = messages.length;
+    }
+  }, [messages]); 
 
   // Auto-resize textarea
   useEffect(() => {
@@ -527,6 +559,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
       setInputText(textToSend); // Restore text on error
     } finally {
       setIsUploading(false);
+      // Clear file selection in finally block to avoid accidental re-sending
       if (!editingMessageId) clearFile();
     }
   };
