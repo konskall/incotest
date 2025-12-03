@@ -657,14 +657,22 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg flex-shrink-0">
                 {config.roomName.substring(0,2).toUpperCase()}
              </div>
-             <div className="min-w-0">
-                 <h2 className="font-bold text-slate-800 leading-tight truncate">{config.roomName}</h2>
-                 <div className="flex items-center gap-1.5">
-                     <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
-                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isRoomReady ? 'bg-green-400' : 'bg-yellow-400'} opacity-75`}></span>
-                        <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isRoomReady ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
-                    </span>
-                    <span className="text-xs text-slate-500 font-medium truncate">{participants} Online</span>
+             <div className="min-w-0 flex flex-col justify-center">
+                 <h2 className="font-bold text-slate-800 leading-tight truncate text-sm md:text-base">{config.roomName}</h2>
+                 <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                     <div className="flex items-center gap-1.5">
+                         <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isRoomReady ? 'bg-green-400' : 'bg-yellow-400'} opacity-75`}></span>
+                            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isRoomReady ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+                        </span>
+                        <span className="text-xs text-slate-500 font-medium whitespace-nowrap">
+                            {participants} Online
+                        </span>
+                     </div>
+                     <span className="text-[10px] sm:text-xs text-slate-400 sm:text-slate-500 truncate font-medium">
+                        <span className="hidden sm:inline text-slate-300 mr-1">|</span>
+                        <span className="sm:font-semibold sm:text-slate-700">{config.username}</span>
+                     </span>
                  </div>
              </div>
         </div>
