@@ -19,6 +19,7 @@ export interface Message {
   createdAt: any; // Firebase Timestamp
   attachment?: Attachment;
   isEdited?: boolean;
+  reactions?: { [emoji: string]: string[] }; // Key: emoji char, Value: array of uids
 }
 
 export interface ChatConfig {
