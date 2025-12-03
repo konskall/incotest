@@ -83,7 +83,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
         <div className="flex flex-col items-center mb-6">
            <img 
             src="https://konskall.github.io/incognitochat/favicon-96x96.png" 
-            alt="Logo" 
+            alt="Logo"
+            style={{ width: '64px', height: '64px' }}
             className="w-16 h-16 rounded-2xl shadow-lg mb-4"
           />
           <h1 className="text-2xl font-bold text-slate-800">Incognito Chat</h1>
@@ -96,6 +97,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
             <input
               type="text"
               placeholder="Username"
+              aria-label="Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               maxLength={20}
@@ -120,6 +122,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
                 <input
                     type="text"
                     placeholder="Image URL (http://...)"
+                    aria-label="Custom Avatar URL"
                     value={avatar}
                     onChange={(e) => setAvatar(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm focus:border-blue-500 outline-none text-base"
@@ -129,12 +132,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
                     <img 
                         src={getDiceBearUrl(avatarStyle, avatarSeed)} 
                         alt="Avatar Preview" 
+                        style={{ width: '64px', height: '64px' }}
                         className="w-16 h-16 rounded-full bg-white shadow-sm border border-slate-200"
                     />
                     <div className="flex-1 flex flex-col gap-2">
                         <select 
                             value={avatarStyle}
                             onChange={(e) => setAvatarStyle(e.target.value)}
+                            aria-label="Avatar Style"
                             className="w-full px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-sm outline-none text-base"
                         >
                             {AVATAR_STYLES.map(style => (
@@ -142,6 +147,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
                             ))}
                         </select>
                         <button 
+                            type="button"
                             onClick={regenerateAvatar}
                             className="text-xs bg-blue-100 text-blue-600 py-1.5 rounded-lg font-semibold hover:bg-blue-200 transition"
                         >
@@ -159,6 +165,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
              <input
               type="text"
               placeholder="Room Name (e.g. secretbase)"
+              aria-label="Room Name"
               value={roomName}
               onChange={(e) => setRoomName(e.target.value)}
               maxLength={30}
@@ -167,6 +174,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
             <input
               type="password"
               placeholder="Room PIN"
+              aria-label="Room PIN"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               maxLength={12}
@@ -184,6 +192,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
 
         <div className="mt-6 border border-blue-100 bg-blue-50/50 rounded-xl overflow-hidden">
             <button 
+                type="button"
                 onClick={() => setShowGuide(!showGuide)}
                 className="w-full flex items-center justify-between p-3 text-blue-600 font-semibold text-sm hover:bg-blue-50 transition"
             >
