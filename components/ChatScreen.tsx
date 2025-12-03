@@ -7,7 +7,7 @@ import { ChatConfig, Message, User, Attachment, Presence } from '../types';
 import { decodeMessage, encodeMessage, playBeep } from '../utils/helpers';
 import MessageList from './MessageList';
 import EmojiPicker from './EmojiPicker';
-import { Send, Smile, LogOut, Trash2, ShieldAlert, Paperclip, X, FileText, Image as ImageIcon, Bell, BellOff, Edit2 } from 'lucide-react';
+import { Send, Smile, LogOut, Trash2, ShieldAlert, Paperclip, X, FileText, Image as ImageIcon, Bell, BellOff, Edit2, Reply } from 'lucide-react';
 
 interface ChatScreenProps {
   config: ChatConfig;
@@ -31,8 +31,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
   // New state to prevent listeners from attaching before room exists
   const [isRoomReady, setIsRoomReady] = useState(false);
   
-  // Edit State
+  // Edit & Reply State
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // Notification State
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -267,7 +268,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
           createdAt: data.createdAt,
           attachment: data.attachment,
           isEdited: data.isEdited,
-          reactions: data.reactions || {}
+          reactions: data.reactions || {},
+          replyTo: data.replyTo
         });
       });
 
@@ -306,7 +308,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
   // Scroll logic
   useEffect(() => {
-    if (!editingMessageId && messagesEndRef.current) {
+    if (!editingMessageId && !replyingTo && messagesEndRef.current) {
         if (isFirstLoad.current) {
             messagesEndRef.current.scrollIntoView({ behavior: "auto" });
             isFirstLoad.current = false;
@@ -314,7 +316,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }
-  }, [messages, typingUsers, editingMessageId]); 
+  }, [messages, typingUsers, editingMessageId, replyingTo]); 
 
   // Auto-resize textarea
   useEffect(() => {
@@ -383,7 +385,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
   const handleEditMessage = useCallback((msg: Message) => {
       setInputText(msg.text);
       setEditingMessageId(msg.id);
+      setReplyingTo(null); // Cancel reply if editing
       setSelectedFile(null);
+      textareaRef.current?.focus();
+  }, []);
+  
+  const handleReply = useCallback((msg: Message) => {
+      setReplyingTo(msg);
+      setEditingMessageId(null); // Cancel edit if replying
       textareaRef.current?.focus();
   }, []);
 
@@ -421,6 +430,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
   const cancelEdit = useCallback(() => {
       setEditingMessageId(null);
       setInputText('');
+  }, []);
+  
+  const cancelReply = useCallback(() => {
+      setReplyingTo(null);
   }, []);
 
   const handleSend = async (e?: React.FormEvent) => {
@@ -475,13 +488,20 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             avatarURL: config.avatarURL,
             text: encodeMessage(textToSend),
             createdAt: serverTimestamp(),
-            reactions: {}
+            reactions: {},
+            replyTo: replyingTo ? {
+                id: replyingTo.id,
+                username: replyingTo.username,
+                text: replyingTo.text || 'Shared a file',
+                isAttachment: !!replyingTo.attachment
+            } : null
           };
           if (attachment) messageData.attachment = attachment;
 
           await addDoc(collection(db, "chats", config.roomKey, "messages"), messageData);
-          // Only clear file on success to allow retry if needed, but in this simple version
-          // we clear it to prevent stuck state.
+          // Clear reply state
+          setReplyingTo(null);
+          // Only clear file on success
           clearFile(); 
       }
     } catch (error) {
@@ -490,8 +510,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
       setInputText(textToSend); // Restore text on error
     } finally {
       setIsUploading(false);
-      // Ensure file is cleared if we are not restoring functionality (simple safety)
-      // This prevents the user from accidentally sending the file again with just a text retry
       if (!editingMessageId) clearFile();
     }
   };
@@ -501,8 +519,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
       e.preventDefault();
       handleSend();
     }
-    if (e.key === 'Escape' && editingMessageId) {
-        cancelEdit();
+    if (e.key === 'Escape') {
+        if (editingMessageId) cancelEdit();
+        if (replyingTo) cancelReply();
     }
   };
 
@@ -603,6 +622,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             messages={messages} 
             currentUserUid={user?.uid || ''} 
             onEdit={handleEditMessage}
+            onReply={handleReply}
             onReact={handleReaction}
         />
         <div ref={messagesEndRef} />
@@ -624,6 +644,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
              </div>
          )}
 
+         {/* Edit Banner */}
          {editingMessageId && (
             <div className="flex items-center justify-between bg-blue-50 px-4 py-2 rounded-t-xl border-t border-l border-r border-blue-100 mb-2 animate-in slide-in-from-bottom-2">
                 <div className="flex items-center gap-2 text-blue-600">
@@ -631,6 +652,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                     <span className="text-sm font-semibold">Editing message</span>
                 </div>
                 <button onClick={cancelEdit} className="p-1 hover:bg-blue-100 rounded-full text-slate-500">
+                    <X size={16} />
+                </button>
+            </div>
+         )}
+
+         {/* Reply Banner */}
+         {replyingTo && (
+            <div className="flex items-center justify-between bg-slate-100 px-4 py-2 rounded-t-xl border-t border-l border-r border-slate-200 mb-2 animate-in slide-in-from-bottom-2">
+                <div className="flex flex-col border-l-4 border-blue-500 pl-2">
+                    <span className="text-xs font-bold text-blue-600">Replying to {replyingTo.username}</span>
+                    <span className="text-sm text-slate-600 truncate max-w-[200px]">
+                        {replyingTo.attachment ? '📎 Attachment' : replyingTo.text}
+                    </span>
+                </div>
+                <button onClick={cancelReply} className="p-1 hover:bg-slate-200 rounded-full text-slate-500">
                     <X size={16} />
                 </button>
             </div>
