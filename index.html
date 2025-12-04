@@ -43,6 +43,9 @@
     <title id="pageTitle">Incognito Chat - Speak Free</title>
     <meta name="description" content="Real-time encrypted chat with PIN-based private rooms. Share freely, anonymously." />
     
+    <!-- Keeping Tailwind CDN for simplicity during dev, but for production build use npm -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
     <!-- Optimized Google Fonts Loading -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -59,7 +62,6 @@
       >
     </noscript>
 
-    <!-- Tailwind Config MUST be before the script tag that loads Tailwind -->
     <script>
       tailwind.config = {
         darkMode: 'class',
@@ -89,8 +91,6 @@
         }
       }
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
-
     <style>
       /* Reset & Mobile Optimizations */
       html {
