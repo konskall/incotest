@@ -267,12 +267,12 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
             href={mapUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className={`flex flex-col gap-2 p-1.5 rounded-xl border mt-2 transition-all group/location hover:shadow-md
+            className={`flex flex-col gap-2 p-1.5 rounded-xl border mt-2 transition-all group/location hover:shadow-md w-full max-w-full
                 ${isMe 
                     ? 'bg-white/10 border-white/20 hover:bg-white/20' 
                     : 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700'}`}
           >
-              <div className="relative w-[200px] h-[100px] sm:w-[240px] sm:h-[120px] bg-slate-200 dark:bg-slate-700 rounded-lg overflow-hidden flex items-center justify-center">
+              <div className="relative w-[200px] sm:w-[240px] max-w-full h-[100px] sm:h-[120px] bg-slate-200 dark:bg-slate-700 rounded-lg overflow-hidden flex items-center justify-center">
                    {/* Fallback pattern since we don't have Static Maps API Key */}
                    <div className="absolute inset-0 opacity-20" style={{backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)', backgroundSize: '10px 10px'}}></div>
                    <div className="z-10 bg-red-500 text-white p-2 rounded-full shadow-lg transform -translate-y-2">
