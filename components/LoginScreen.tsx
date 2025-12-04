@@ -122,15 +122,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
 
   return (
     <div className="flex flex-col items-center justify-start min-h-[100dvh] p-4 pt-2 md:pt-6 w-full max-w-md mx-auto animate-in slide-in-from-bottom-4 duration-500 relative">
-      <button 
-        onClick={toggleTheme}
-        className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
-        title="Toggle Theme"
-      >
-        {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-      </button>
+      <main className="relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-blue-500/10 dark:shadow-blue-900/10 w-full p-8 border border-white/50 dark:border-slate-800 transition-colors">
+        <button 
+            onClick={toggleTheme}
+            className="absolute top-6 right-6 p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors z-10"
+            title="Toggle Theme"
+        >
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
 
-      <main className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-blue-500/10 dark:shadow-blue-900/10 w-full p-8 border border-white/50 dark:border-slate-800 transition-colors">
         <div className="flex flex-col items-center mb-6">
            <img 
             src="https://konskall.github.io/incognitochat/favicon-96x96.png" 
