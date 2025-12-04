@@ -67,10 +67,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
   // Theme effect
   useEffect(() => {
+    const metaThemeColor = document.querySelector("meta[name='theme-color']");
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
+      // Match slate-900 (#0f172a) for chat screen
+      metaThemeColor?.setAttribute("content", "#0f172a");
     } else {
       document.documentElement.classList.remove('dark');
+      // Match slate-100 (#f1f5f9) for chat screen
+      metaThemeColor?.setAttribute("content", "#f1f5f9");
     }
   }, [isDarkMode]);
 
@@ -818,7 +823,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
         <div ref={messagesEndRef} />
       </main>
 
-      <footer className="bg-white dark:bg-slate-900 p-1.5 border-t border-slate-200 dark:border-slate-800 shadow-lg z-20 relative pb-[calc(0.75rem+env(safe-area-inset-bottom))] transition-colors">
+      <footer className="bg-white dark:bg-slate-900 p-1.5 border-t border-slate-200 dark:border-slate-800 shadow-lg z-20 relative pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col items-center justify-center transition-colors">
          {typingUsers.length > 0 && (
              <div className="absolute -top-6 left-6 text-xs text-slate-500 dark:text-slate-400 bg-white/80 dark:bg-slate-900/80 backdrop-blur px-2 py-0.5 rounded-t-lg animate-pulse flex items-center gap-1">
                  <span className="flex gap-0.5">
@@ -836,7 +841,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
          {/* Edit Banner */}
          {editingMessageId && (
-            <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-t-xl border-t border-l border-r border-blue-100 dark:border-blue-800 mb-2 animate-in slide-in-from-bottom-2">
+            <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-t-xl border-t border-l border-r border-blue-100 dark:border-blue-800 mb-2 animate-in slide-in-from-bottom-2 w-full max-w-4xl">
                 <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
                     <Edit2 size={16} />
                     <span className="text-sm font-semibold">Editing message</span>
@@ -849,7 +854,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
 
          {/* Reply Banner */}
          {replyingTo && (
-            <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-t-xl border-t border-l border-r border-slate-200 dark:border-slate-700 mb-2 animate-in slide-in-from-bottom-2">
+            <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-t-xl border-t border-l border-r border-slate-200 dark:border-slate-700 mb-2 animate-in slide-in-from-bottom-2 w-full max-w-4xl">
                 <div className="flex flex-col border-l-4 border-blue-500 pl-2">
                     <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Replying to {replyingTo.username}</span>
                     <span className="text-sm text-slate-600 dark:text-slate-300 truncate max-w-[200px]">
@@ -862,7 +867,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             </div>
          )}
 
-         <div className="relative flex flex-col max-w-4xl mx-auto">
+         <div className="relative flex flex-col w-full max-w-4xl mx-auto">
              {selectedFile && !editingMessageId && (
                <div className="flex items-center gap-3 p-2 bg-blue-50 dark:bg-slate-800 border border-blue-100 dark:border-slate-700 rounded-xl w-fit animate-in slide-in-from-bottom-2 mb-2">
                   <div className="w-10 h-10 bg-blue-100 dark:bg-slate-700 rounded-lg flex items-center justify-center text-blue-500 dark:text-blue-400">
@@ -878,7 +883,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                </div>
              )}
 
-             <div className="flex items-center gap-1.5 sm:gap-2">
+             <div className="flex items-center gap-1.5 sm:gap-2 w-full">
                  {showEmoji && <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setShowEmoji(false)} />}
                  
                  <input 
