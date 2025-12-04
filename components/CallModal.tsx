@@ -64,6 +64,32 @@ const CallModal: React.FC<CallModalProps> = ({ roomKey, currentUserUid, isHost, 
     let localStreamInstance: MediaStream | null = null;
     let unsubs: (() => void)[] = [];
 
+    const callDocRef = doc(db, 'chats', roomKey, 'calls', 'active_call');
+    const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
+    const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
+
+    const cleanSignalingData = async () => {
+        try {
+            // Firestore does not delete subcollections when deleting a doc.
+            // We must manually delete all candidates from previous calls to avoid "zombie" candidates.
+            const batch = writeBatch(db);
+            
+            const offerSnap = await getDocs(offerCandidatesRef);
+            offerSnap.forEach((d) => batch.delete(d.ref));
+
+            const answerSnap = await getDocs(answerCandidatesRef);
+            answerSnap.forEach((d) => batch.delete(d.ref));
+
+            // Also delete the main call doc to ensure fresh start
+            batch.delete(callDocRef);
+
+            await batch.commit();
+            console.log("Signaling data cleaned up.");
+        } catch (e) {
+            console.warn("Cleanup error (might be benign if empty):", e);
+        }
+    };
+
     const startCall = async () => {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -71,6 +97,12 @@ const CallModal: React.FC<CallModalProps> = ({ roomKey, currentUserUid, isHost, 
              alert("WebRTC is not supported in this browser context (requires HTTPS).");
              onClose();
              return;
+        }
+
+        // 0. HOST ONLY: Deep Clean before starting
+        if (isHost) {
+            setStatus('initializing');
+            await cleanSignalingData();
         }
 
         // 1. Get Local Media with robust fallback
@@ -177,10 +209,6 @@ const CallModal: React.FC<CallModalProps> = ({ roomKey, currentUserUid, isHost, 
         };
 
         // 3. Signaling Logic (Firestore)
-        const callDocRef = doc(db, 'chats', roomKey, 'calls', 'active_call');
-        const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
-        const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
-
         if (isHost) {
           setStatus('waiting');
           // --- HOST LOGIC (Caller) ---
