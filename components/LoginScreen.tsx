@@ -34,15 +34,22 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onJoin }) => {
   ];
 
   useEffect(() => {
-    const metaThemeColor = document.querySelector("meta[name='theme-color']");
+    // Robustly find or create the meta tag
+    let metaThemeColor = document.querySelector("meta[name='theme-color']");
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement('meta');
+      metaThemeColor.setAttribute('name', 'theme-color');
+      document.head.appendChild(metaThemeColor);
+    }
+
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
-      // Match slate-950 (#020617)
-      metaThemeColor?.setAttribute("content", "#020617");
+      // Match slate-950 (#020617) for Login Screen
+      metaThemeColor.setAttribute("content", "#020617");
     } else {
       document.documentElement.classList.remove('dark');
-      // Match slate-50 (#f8fafc)
-      metaThemeColor?.setAttribute("content", "#f8fafc");
+      // Match slate-50 (#f8fafc) for Login Screen
+      metaThemeColor.setAttribute("content", "#f8fafc");
     }
   }, [isDarkMode]);
 
