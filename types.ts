@@ -3,6 +3,12 @@ export interface User {
   isAnonymous: boolean;
 }
 
+export interface ActiveUser {
+  uid: string;
+  username: string;
+  avatar: string;
+}
+
 export interface Attachment {
   url: string; // Base64 string
   name: string;
