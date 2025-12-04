@@ -257,8 +257,7 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
   };
 
   const renderLocation = () => {
-      // FIX: Stronger validation to prevent crashes if coordinates are missing/undefined
-      if (!msg.location || typeof msg.location.lat !== 'number' || typeof msg.location.lng !== 'number') return null;
+      if (!msg.location) return null;
       
       const { lat, lng } = msg.location;
       const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`;
@@ -277,8 +276,7 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
                    {/* Fallback pattern since we don't have Static Maps API Key */}
                    <div className="absolute inset-0 opacity-20" style={{backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)', backgroundSize: '10px 10px'}}></div>
                    <div className="z-10 bg-red-500 text-white p-2 rounded-full shadow-lg transform -translate-y-2">
-                       {/* FIX: Removed fill="currentColor" to ensure the pin is visible as white icon on red bg */}
-                       <MapPin size={24} className="text-white" />
+                       <MapPin size={24} fill="currentColor" />
                    </div>
                    <div className="absolute bottom-2 left-0 right-0 text-center">
                         <span className="text-[10px] font-bold text-slate-500 bg-white/80 dark:bg-slate-900/80 dark:text-slate-300 px-2 py-0.5 rounded-full shadow-sm">
