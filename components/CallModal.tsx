@@ -182,6 +182,7 @@ const CallModal: React.FC<CallModalProps> = ({ roomKey, currentUserUid, isHost, 
             }
 
             const data = snapshot.data();
+            // Use local 'rtc' variable, not 'pc.current'
             if (!rtc.currentRemoteDescription && data?.answer) {
               const answerDescription = new RTCSessionDescription(data.answer);
               rtc.setRemoteDescription(answerDescription).catch(e => console.error(e));
@@ -228,6 +229,7 @@ const CallModal: React.FC<CallModalProps> = ({ roomKey, currentUserUid, isHost, 
     
                  const data = snapshot.data();
                  // Check if we have an offer and haven't set remote desc yet
+                 // CRITICAL: Use local 'rtc' variable to avoid possibly null error
                  if (!rtc.currentRemoteDescription && data?.offer) {
                      const offerDescription = new RTCSessionDescription(data.offer);
                      await rtc.setRemoteDescription(offerDescription);
