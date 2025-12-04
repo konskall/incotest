@@ -50,3 +50,17 @@ export interface Presence {
   lastSeen: any;
   isTyping?: boolean;
 }
+
+// WebRTC Signaling Types
+export interface CallSignal {
+  type: 'offer' | 'answer';
+  sdp: string;
+  timestamp: any;
+}
+
+export interface IceCandidate {
+  candidate: string;
+  sdpMid: string;
+  sdpMLineIndex: number;
+  uid: string;
+}
