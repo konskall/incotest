@@ -41,6 +41,22 @@ const CallModal: React.FC<CallModalProps> = ({ roomKey, currentUserUid, isHost, 
     };
   }, []);
 
+  // Connect remote stream to video element whenever it changes
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        // Explicit play is often needed for audio-only streams on some browsers
+        remoteVideoRef.current.play().catch(e => console.warn("Remote play error:", e));
+    }
+  }, [remoteStream]);
+
+  // Connect local stream to local video element
+  useEffect(() => {
+      if (localVideoRef.current && localStream && isVideoCall) {
+          localVideoRef.current.srcObject = localStream;
+      }
+  }, [localStream, isVideoCall]);
+
   // Initialize WebRTC
   useEffect(() => {
     // Keep track of resources to clean up in the return block
@@ -92,9 +108,6 @@ const CallModal: React.FC<CallModalProps> = ({ roomKey, currentUserUid, isHost, 
         }
         
         setLocalStream(localStreamInstance);
-        if (localVideoRef.current && localStreamInstance && isVideoCall) {
-          localVideoRef.current.srcObject = localStreamInstance;
-        }
 
         // 2. Create Peer Connection
         const rtc = new RTCPeerConnection(SERVERS);
@@ -117,13 +130,9 @@ const CallModal: React.FC<CallModalProps> = ({ roomKey, currentUserUid, isHost, 
 
         // Pull remote tracks
         rtc.ontrack = (event) => {
+          console.log("Track received:", event.track.kind);
           if (event.streams && event.streams[0]) {
               setRemoteStream(event.streams[0]);
-              if (remoteVideoRef.current) {
-                 remoteVideoRef.current.srcObject = event.streams[0];
-                 // Ensure video plays on iOS/Safari
-                 remoteVideoRef.current.play().catch(e => console.log("Auto-play blocked:", e));
-              }
           }
         };
         
@@ -398,15 +407,20 @@ const CallModal: React.FC<CallModalProps> = ({ roomKey, currentUserUid, isHost, 
 
            {/* Main Video (Remote) */}
            <div className="flex-1 relative flex items-center justify-center bg-slate-900">
-                {remoteStream && remoteStream.getVideoTracks().length > 0 ? (
-                    <video 
-                        ref={remoteVideoRef} 
-                        autoPlay 
-                        playsInline 
-                        className="w-full h-full object-cover" 
-                    />
-                ) : (
-                    <div className="flex flex-col items-center justify-center text-slate-500 gap-4">
+                {/* 
+                   CRITICAL FIX: Always render the video element even if remoteStream is null or audio-only.
+                   This ensures audio can play. We control visibility with opacity.
+                */}
+                <video 
+                    ref={remoteVideoRef} 
+                    autoPlay 
+                    playsInline 
+                    className={`w-full h-full object-cover absolute inset-0 transition-opacity duration-300 ${(!remoteStream || remoteStream.getVideoTracks().length === 0) ? 'opacity-0' : 'opacity-100'}`} 
+                />
+
+                {/* Placeholder Overlay for Audio Calls or Loading */}
+                {(!remoteStream || remoteStream.getVideoTracks().length === 0) && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-slate-500 gap-4">
                         <div className={`w-24 h-24 rounded-full flex items-center justify-center animate-pulse ${status === 'connected' ? 'bg-green-900/20 text-green-500' : 'bg-slate-800 text-slate-600'}`}>
                             {status === 'connected' ? <Phone size={48} /> : <Users size={40} />}
                         </div>
