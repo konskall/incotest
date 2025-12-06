@@ -10,10 +10,25 @@ const ICE_SERVERS = {
   iceServers: [
     { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
     {
-      urls: "turn:relay1.expressturn.com:3478", 
-      username: "000000002080400345",
-      credential: "JKtA6jhh/ttjg/M0xeAlleG4ucc="
-    }
+        urls: "turn:standard.relay.metered.ca:80",
+        username: "4aa8db5b8a8c31527e2495be",
+        credential: "8O6d1Nc3j8iAsTiq",
+      },
+      {
+        urls: "turn:standard.relay.metered.ca:80?transport=tcp",
+        username: "4aa8db5b8a8c31527e2495be",
+        credential: "8O6d1Nc3j8iAsTiq",
+      },
+      {
+        urls: "turn:standard.relay.metered.ca:443",
+        username: "4aa8db5b8a8c31527e2495be",
+        credential: "8O6d1Nc3j8iAsTiq",
+      },
+      {
+        urls: "turns:standard.relay.metered.ca:443?transport=tcp",
+        username: "4aa8db5b8a8c31527e2495be",
+        credential: "8O6d1Nc3j8iAsTiq",
+      }
   ],
   iceCandidatePoolSize: 10,
 };
