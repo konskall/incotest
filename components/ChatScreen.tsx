@@ -8,7 +8,7 @@ import { decodeMessage, encodeMessage } from '../utils/helpers';
 import MessageList from './MessageList';
 import EmojiPicker from './EmojiPicker';
 import CallManager from './CallManager';
-import { Send, Smile, LogOut, Trash2, ShieldAlert, Paperclip, X, FileText, Image as ImageIcon, Bell, BellOff, Edit2, Volume2, VolumeX, Vibrate, VibrateOff, MapPin, Moon, Sun, Users } from 'lucide-react';
+import { Send, Smile, LogOut, Trash2, ShieldAlert, Paperclip, X, FileText, Image as ImageIcon, Bell, BellOff, Edit2, Volume2, VolumeX, Vibrate, VibrateOff, MapPin, Moon, Sun, Users, Settings } from 'lucide-react';
 import { initAudio } from '../utils/helpers';
 
 interface ChatScreenProps {
@@ -30,6 +30,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [showParticipantsList, setShowParticipantsList] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -92,6 +93,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     const newTheme = !isDarkMode;
     setIsDarkMode(newTheme);
     localStorage.setItem('theme', newTheme ? 'dark' : 'light');
+    setShowSettingsMenu(false); // Close menu on selection
   };
 
   // 1. Authentication & Network Status & Feature Detection
@@ -436,6 +438,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
       // If already enabled, disable them
       if (notificationsEnabled) {
           setNotificationsEnabled(false);
+          setShowSettingsMenu(false);
           return;
       }
 
@@ -463,6 +466,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
       } else {
           alert("Notifications are blocked in your browser settings.");
       }
+      setShowSettingsMenu(false);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -779,7 +783,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                  </div>
              </div>
         </div>
-        <div className="flex gap-1 sm:gap-2 flex-shrink-0 items-center">
+        <div className="flex gap-1 sm:gap-2 flex-shrink-0 items-center relative">
             {/* Participants Button */}
             <button 
                 onClick={() => setShowParticipantsList(true)}
@@ -787,6 +791,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                 title="View Participants & Call"
             >
                 <Users size={20} />
+            </button>
+
+            {/* Mobile Settings Toggle */}
+            <button
+                onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+                className="sm:hidden p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
+            >
+                <Settings size={20} />
             </button>
 
             {canVibrate && (
@@ -815,11 +827,50 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             
             <button 
                 onClick={toggleTheme}
-                className="p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
+                className="hidden sm:block p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
                 title="Toggle Theme"
             >
                 {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
+
+            {/* Mobile Settings Dropdown */}
+            {showSettingsMenu && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowSettingsMenu(false)} />
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-100 dark:border-slate-700 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col p-1.5 sm:hidden">
+                        {canVibrate && (
+                             <button 
+                                onClick={() => { setVibrationEnabled(!vibrationEnabled); setShowSettingsMenu(false); }}
+                                className={`flex items-center gap-3 w-full p-2 rounded-lg text-sm font-medium transition ${vibrationEnabled ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
+                            >
+                                {vibrationEnabled ? <Vibrate size={18} /> : <VibrateOff size={18} />}
+                                <span>Vibration</span>
+                            </button>
+                        )}
+                        <button 
+                            onClick={() => { setSoundEnabled(!soundEnabled); setShowSettingsMenu(false); }}
+                            className={`flex items-center gap-3 w-full p-2 rounded-lg text-sm font-medium transition ${soundEnabled ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
+                        >
+                            {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                            <span>Sound</span>
+                        </button>
+                        <button 
+                            onClick={toggleNotifications}
+                            className={`flex items-center gap-3 w-full p-2 rounded-lg text-sm font-medium transition ${notificationsEnabled ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
+                        >
+                            {notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}
+                            <span>Notifications</span>
+                        </button>
+                        <button 
+                            onClick={toggleTheme}
+                            className="flex items-center gap-3 w-full p-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition"
+                        >
+                            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                            <span>Theme</span>
+                        </button>
+                    </div>
+                </>
+            )}
 
             {/* Delete button only for creator */}
             {user && config.roomKey.includes(user.uid) /* NOTE: This is a placeholder check. Ideally we store creator in config or check doc */ }
