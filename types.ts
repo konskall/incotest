@@ -50,3 +50,16 @@ export interface Presence {
   lastSeen: any;
   isTyping?: boolean;
 }
+
+export interface CallData {
+  id: string;
+  callerId: string;
+  callerName: string;
+  callerAvatar: string;
+  calleeId: string;
+  type: 'audio' | 'video';
+  status: 'offering' | 'answered' | 'ended' | 'declined';
+  offer?: any;
+  answer?: any;
+  createdAt: any;
+}
