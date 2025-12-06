@@ -5,6 +5,7 @@ import { collection, doc, onSnapshot, addDoc, updateDoc, serverTimestamp, query,
 import { User, ChatConfig } from '../types';
 import { initAudio } from '../utils/helpers';
 
+// Public Google STUN servers are reliable for most P2P scenarios
 const ICE_SERVERS = {
   iceServers: [
     { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
@@ -46,7 +47,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // --- Logic Refs ---
+  // --- Logic Refs (No Re-renders) ---
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
   const remoteStream = useRef<MediaStream | null>(null);
@@ -61,6 +62,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   // CLEANUP
   // ============================================================
   const cleanup = useCallback(() => {
+    // 1. Stop Media Tracks
     if (localStream.current) {
       localStream.current.getTracks().forEach(track => {
           track.stop();
@@ -69,6 +71,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       localStream.current = null;
     }
     
+    // 2. Close Peer Connection
     if (pc.current) {
       pc.current.onicecandidate = null;
       pc.current.ontrack = null;
@@ -76,15 +79,24 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       pc.current = null;
     }
 
+    // 3. Clear Remote Stream
+    if (remoteStream.current) {
+        remoteStream.current.getTracks().forEach(t => t.stop());
+        remoteStream.current = null;
+    }
+
+    // 4. Unsubscribe Listeners
     unsubscribeRefs.current.forEach(unsub => unsub());
     unsubscribeRefs.current = [];
 
+    // 5. Stop Ringtone
     if (ringtone.current) {
       ringtone.current.pause();
       ringtone.current.currentTime = 0;
       ringtone.current = null;
     }
 
+    // 6. Reset UI
     setViewState({
       status: 'idle',
       callId: null,
@@ -98,23 +110,30 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
     setIsMuted(false);
     setIsVideoOff(false);
     
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    // 7. Reset video elements
+    if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+    }
+    if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
+    }
   }, []);
 
   // ============================================================
   // MEDIA HANDLING
   // ============================================================
   const getMediaStream = async (type: 'audio' | 'video', preferredMode: 'user' | 'environment') => {
-      // Desktop often requires HTTPS for media access
+      // Check for insecure context (HTTP) which blocks WebRTC on non-localhost
       const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
       const isSecure = location.protocol === 'https:';
       if (!isLocalhost && !isSecure) {
-          throw new Error("WebRTC requires HTTPS.");
+          throw new Error("WebRTC requires HTTPS. Please deploy with SSL or use localhost.");
       }
 
+      // Detect Mobile Device to optionally use facingMode
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+      // Constraints Strategy:
       let constraints: MediaStreamConstraints;
 
       if (type === 'video') {
@@ -124,71 +143,77 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
                   video: { facingMode: preferredMode }
               };
           } else {
+              // Desktop: Simple constraints often work better
               constraints = {
                   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                  video: true
+                  video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
               };
           }
       } else {
-          constraints = { 
-              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
-              video: false 
-          };
+          constraints = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false };
       }
 
       try {
-          return await navigator.mediaDevices.getUserMedia(constraints);
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          return stream;
       } catch (err: any) {
-          console.warn("Media constraint failed, trying fallback:", err);
+          console.warn("[Media] Ideal constraints failed, trying fallback:", err);
+          // Fallback: Try bare minimum
           try {
               return await navigator.mediaDevices.getUserMedia({ audio: true, video: type === 'video' });
           } catch (finalErr) {
+              console.error("[Media] Fallback failed:", finalErr);
               throw finalErr;
           }
       }
   };
 
   // ============================================================
-  // PEER CONNECTION
+  // PEER CONNECTION SETUP
   // ============================================================
   const createPC = useCallback((callId: string, isCaller: boolean) => {
     const newPC = new RTCPeerConnection(ICE_SERVERS);
     pc.current = newPC;
 
-    // A. Add Local Tracks
+    // A. Add Local Tracks to PC
     if (localStream.current) {
       localStream.current.getTracks().forEach(track => {
         newPC.addTrack(track, localStream.current!);
       });
     }
 
-    // B. Handle Remote Stream (Key Fix for Audio)
+    // B. Handle Remote Stream
+    // We create a new MediaStream and add tracks as they arrive.
+    // This solves issues where audio tracks arrive later or separate from video.
+    if (!remoteStream.current) {
+        remoteStream.current = new MediaStream();
+    }
+
     newPC.ontrack = (event) => {
-      console.log(`[WebRTC] Received remote track: ${event.track.kind}`);
+      console.log("[WebRTC] Remote track received:", event.track.kind, event.track.id);
       
-      // Use the stream provided by the browser to ensure sync
-      const stream = event.streams[0];
+      // Ensure the track is enabled
+      event.track.enabled = true;
       
-      if (stream) {
-          remoteStream.current = stream;
-          
-          if (remoteVideoRef.current) {
-              remoteVideoRef.current.srcObject = stream;
-              // Explicitly unmute and play
-              remoteVideoRef.current.muted = false;
-              remoteVideoRef.current.volume = 1.0;
-              
-              const playPromise = remoteVideoRef.current.play();
-              if (playPromise !== undefined) {
-                  playPromise.catch(e => {
-                      console.error("Auto-play failed (likely policy). User interaction needed.", e);
-                  });
-              }
-          }
+      // Add track to our stable remote stream reference
+      if (remoteStream.current) {
+          remoteStream.current.addTrack(event.track);
+      }
+
+      // Attach stream to video element immediately
+      if (remoteVideoRef.current) {
+        // Only set srcObject if it's different to prevent flickering/reset
+        if (remoteVideoRef.current.srcObject !== remoteStream.current) {
+            remoteVideoRef.current.srcObject = remoteStream.current;
+        }
+        // Force play, ensure not muted
+        remoteVideoRef.current.muted = false;
+        remoteVideoRef.current.volume = 1.0;
+        remoteVideoRef.current.play().catch(e => console.error("AutoPlay blocked", e));
       }
     };
 
-    // C. Candidates
+    // C. Handle ICE Candidates
     newPC.onicecandidate = (event) => {
       if (event.candidate) {
           const collectionName = isCaller ? 'offerCandidates' : 'answerCandidates';
@@ -196,19 +221,26 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       }
     };
 
+    // D. Monitor Connection State
+    newPC.onconnectionstatechange = () => {
+        console.log("[WebRTC] State:", newPC.connectionState);
+    };
+
     return newPC;
   }, [config.roomKey]);
 
   // ============================================================
-  // CALL LOGIC
+  // START CALL (Caller)
   // ============================================================
   const startCall = async (targetUid: string, targetName: string, targetAvatar: string, type: 'audio' | 'video') => {
     try {
       onCloseParticipants();
       
+      // 1. Get Local Media
       const stream = await getMediaStream(type, facingMode);
       localStream.current = stream;
 
+      // 2. Setup UI State
       const callDocRef = doc(collection(db, "chats", config.roomKey, "calls"));
       const callId = callDocRef.id;
       
@@ -221,10 +253,12 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
         type: type
       });
 
+      // 3. Create PC & Offer
       const connection = createPC(callId, true);
       const offerDescription = await connection.createOffer();
       await connection.setLocalDescription(offerDescription);
 
+      // 4. Write Offer to Firestore
       const callData = {
         id: callId,
         callerId: user.uid,
@@ -238,6 +272,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       };
       await setDoc(callDocRef, callData);
 
+      // 5. Listen for Answer
       const unsubDoc = onSnapshot(callDocRef, (snapshot) => {
         const data = snapshot.data();
         if (!data) return; 
@@ -254,12 +289,13 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       });
       unsubscribeRefs.current.push(unsubDoc);
 
+      // 6. Listen for Remote ICE Candidates (Answer Candidates)
       const candidatesQuery = query(collection(db, "chats", config.roomKey, "calls", callId, "answerCandidates"));
       const unsubCandidates = onSnapshot(candidatesQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const candidate = new RTCIceCandidate(change.doc.data());
-            connection.addIceCandidate(candidate).catch(console.error);
+            connection.addIceCandidate(candidate).catch(e => console.log("Candidate error", e));
           }
         });
       });
@@ -276,6 +312,9 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
     }
   };
 
+  // ============================================================
+  // ANSWER CALL (Callee)
+  // ============================================================
   const answerCall = async () => {
     if (!incomingData) return;
 
@@ -283,29 +322,34 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
     const offer = incomingData.offer;
 
     try {
-      // Crucial: Unlock Audio Context on user gesture
-      initAudio(); 
+      initAudio(); // Initialize audio context
       if (ringtone.current) {
           ringtone.current.pause();
           ringtone.current = null;
       }
 
+      // 1. Get Local Media
       const stream = await getMediaStream(incomingData.type, facingMode);
       localStream.current = stream;
 
+      // 2. Setup PC
       const connection = createPC(callId, false);
 
+      // 3. Set Remote Description
       await connection.setRemoteDescription(new RTCSessionDescription(offer));
 
+      // 4. Create Answer
       const answerDescription = await connection.createAnswer();
       await connection.setLocalDescription(answerDescription);
 
+      // 5. Update Firestore
       const callRef = doc(db, "chats", config.roomKey, "calls", callId);
       await updateDoc(callRef, {
         answer: { type: answerDescription.type, sdp: answerDescription.sdp },
         status: 'answered'
       });
 
+      // 6. UI Update
       setViewState({
         status: 'connected',
         callId: callId,
@@ -316,17 +360,19 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       });
       setIncomingData(null); 
 
+      // 7. Listen for Remote Candidates (Offer Candidates)
       const candidatesQuery = query(collection(db, "chats", config.roomKey, "calls", callId, "offerCandidates"));
       const unsubCandidates = onSnapshot(candidatesQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const candidate = new RTCIceCandidate(change.doc.data());
-            connection.addIceCandidate(candidate).catch(console.error);
+            connection.addIceCandidate(candidate).catch(e => console.log("Candidate error", e));
           }
         });
       });
       unsubscribeRefs.current.push(unsubCandidates);
 
+      // 8. Listen for End
       const unsubDoc = onSnapshot(callRef, (snapshot) => {
           if (snapshot.data()?.status === 'ended') {
               cleanup();
@@ -342,8 +388,9 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   };
 
   // ============================================================
-  // LISTENERS
+  // LISTENERS & UI HELPERS
   // ============================================================
+  
   useEffect(() => {
     if (viewState.status !== 'idle') return;
 
@@ -363,7 +410,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
           initAudio();
           const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
           audio.loop = true;
-          audio.play().catch(() => {});
+          audio.play().catch(e => console.log("Audio play error", e));
           ringtone.current = audio;
         }
         if (change.type === 'removed') {
@@ -376,27 +423,22 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
     return () => unsubscribe();
   }, [config.roomKey, user.uid, viewState.status]);
 
-  // --- Force Attach/Re-attach Stream on State Change ---
+  // Force re-attach streams when view state changes to connected
   useEffect(() => {
     if (viewState.status === 'connected' || viewState.status === 'calling') {
-       // Local Stream
        if (localVideoRef.current && localStream.current) {
            localVideoRef.current.srcObject = localStream.current;
-           localVideoRef.current.muted = true; // Mute local to avoid feedback
+           localVideoRef.current.muted = true;
        }
-       // Remote Stream
        if (remoteVideoRef.current && remoteStream.current) {
            remoteVideoRef.current.srcObject = remoteStream.current;
-           remoteVideoRef.current.muted = false; // Ensure NOT muted
+           remoteVideoRef.current.muted = false; // Ensure not muted
            remoteVideoRef.current.volume = 1.0;
-           remoteVideoRef.current.play().catch(e => console.log("Remote play error:", e));
+           remoteVideoRef.current.play().catch(console.error);
        }
     }
   }, [viewState.status, viewState.type]);
 
-  // ============================================================
-  // ACTIONS
-  // ============================================================
   const handleHangup = async () => {
     if (viewState.callId) {
         const callRef = doc(db, "chats", config.roomKey, "calls", viewState.callId);
@@ -442,7 +484,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
               if (sender) sender.replaceTrack(videoTrack);
           }
           
-          // Combine new video with existing audio
+          // Keep old audio track if it exists
           const audioTracks = localStream.current.getAudioTracks();
           if(audioTracks.length > 0) {
               newStream.addTrack(audioTracks[0]);
@@ -460,7 +502,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   };
 
   // ============================================================
-  // RENDERERS
+  // RENDERING
   // ============================================================
 
   if (errorMsg) {
@@ -529,12 +571,12 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
               {/* Main Media Area */}
               <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center">
                   
-                  {/* Remote Video - Used for both Audio and Video calls to handle the stream */}
+                  {/* Remote Video - Always rendered, used for audio too */}
                   <video 
                       ref={remoteVideoRef} 
                       autoPlay 
                       playsInline 
-                      className={`w-full h-full object-contain ${showRemoteVideo ? '' : 'opacity-0 absolute pointer-events-none h-1 w-1'}`} 
+                      className={`w-full h-full object-contain ${showRemoteVideo ? '' : 'hidden'}`} 
                   />
                   
                   {/* Placeholder / Audio View */}
