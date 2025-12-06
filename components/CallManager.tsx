@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff, RotateCcw, X, User as UserIcon } from 'lucide-react';
 import { db } from '../services/firebase';
-import { collection, doc, onSnapshot, addDoc, updateDoc, serverTimestamp, query, where, getDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, addDoc, updateDoc, serverTimestamp, query, where, setDoc } from 'firebase/firestore';
 import { User, ChatConfig } from '../types';
 import { initAudio } from '../utils/helpers';
 
@@ -60,7 +60,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   // ============================================================
-  // HELPER: Cleanup / Hangup
+  // HELPER: Clean up everything
   // ============================================================
   const cleanup = useCallback(() => {
     // 1. Stop Media Tracks
@@ -104,8 +104,9 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   // ============================================================
   // HELPER: Initialize Peer Connection
   // ============================================================
-  const setupPeerConnection = useCallback((callId: string) => {
+  const createPC = useCallback((callId: string, isCaller: boolean) => {
     const newPC = new RTCPeerConnection(ICE_SERVERS);
+    pc.current = newPC;
 
     // A. Add Local Tracks
     if (localStream.current) {
@@ -124,12 +125,19 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       }
     };
 
-    pc.current = newPC;
+    // C. ICE Candidates logic
+    newPC.onicecandidate = (event) => {
+      if (event.candidate) {
+          const collectionName = isCaller ? 'offerCandidates' : 'answerCandidates';
+          addDoc(collection(db, "chats", config.roomKey, "calls", callId, collectionName), event.candidate.toJSON());
+      }
+    };
+
     return newPC;
-  }, []);
+  }, [config.roomKey]);
 
   // ============================================================
-  // ACTION: Start a Call (Caller Side)
+  // ACTION: Start Call (Caller Side)
   // ============================================================
   const startCall = async (targetUid: string, targetName: string, targetAvatar: string, type: 'audio' | 'video') => {
     try {
@@ -148,21 +156,13 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       const callId = callDocRef.id;
 
       // 3. Setup PC
-      const connection = setupPeerConnection(callId);
+      const connection = createPC(callId, true);
 
-      // 4. Handle Local ICE Candidates -> Send to Firestore
-      connection.onicecandidate = (event) => {
-        if (event.candidate) {
-          const candidatesRef = collection(db, "chats", config.roomKey, "calls", callId, "offerCandidates");
-          addDoc(candidatesRef, event.candidate.toJSON());
-        }
-      };
-
-      // 5. Create Offer
+      // 4. Create Offer
       const offerDescription = await connection.createOffer();
       await connection.setLocalDescription(offerDescription);
 
-      // 6. Write Offer to Firestore
+      // 5. Write Offer to Firestore
       const callData = {
         id: callId,
         callerId: user.uid,
@@ -176,7 +176,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       };
       await setDoc(callDocRef, callData);
 
-      // 7. Update UI
+      // 6. Update UI
       setViewState({
         status: 'calling',
         callId: callId,
@@ -186,22 +186,24 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
         type: type
       });
 
-      // 8. Listen for Answer
+      // 7. Listen for Answer
       const unsubDoc = onSnapshot(callDocRef, (snapshot) => {
         const data = snapshot.data();
+        if (!data) return; // Call deleted
+
         if (!connection.currentRemoteDescription && data?.answer) {
           const answerDescription = new RTCSessionDescription(data.answer);
           connection.setRemoteDescription(answerDescription);
           setViewState(prev => ({ ...prev, status: 'connected' }));
         }
         // Hangup detected
-        if (data?.status === 'ended' || data?.status === 'declined') {
+        if (data.status === 'ended' || data.status === 'declined') {
           cleanup();
         }
       });
       unsubscribeRefs.current.push(unsubDoc);
 
-      // 9. Listen for Remote Candidates (Answer Candidates)
+      // 8. Listen for Remote Candidates (Answer Candidates)
       const candidatesQuery = query(collection(db, "chats", config.roomKey, "calls", callId, "answerCandidates"));
       const unsubCandidates = onSnapshot(candidatesQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
@@ -210,11 +212,9 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
             if (connection.remoteDescription) {
                 connection.addIceCandidate(candidate).catch(console.error);
             } else {
-                // Wait for remote description
-                // Note: Modern WebRTC buffers this automatically, but being safe doesn't hurt
+                // Wait for remote description or rely on PC buffering
+                connection.addIceCandidate(candidate).catch(console.error);
             }
-            // Simply adding it to PC usually works if implementation handles buffering
-            connection.addIceCandidate(candidate).catch(e => console.log("Candidate buffer warning", e));
           }
         });
       });
@@ -248,31 +248,23 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       localStream.current = stream;
 
       // 2. Setup PC
-      const connection = setupPeerConnection(callId);
+      const connection = createPC(callId, false);
 
-      // 3. Handle Local ICE Candidates -> Send to Firestore
-      connection.onicecandidate = (event) => {
-        if (event.candidate) {
-          const candidatesRef = collection(db, "chats", config.roomKey, "calls", callId, "answerCandidates");
-          addDoc(candidatesRef, event.candidate.toJSON());
-        }
-      };
-
-      // 4. Set Remote Description (The Offer)
+      // 3. Set Remote Description (The Offer)
       await connection.setRemoteDescription(new RTCSessionDescription(offer));
 
-      // 5. Create Answer
+      // 4. Create Answer
       const answerDescription = await connection.createAnswer();
       await connection.setLocalDescription(answerDescription);
 
-      // 6. Update Firestore with Answer
+      // 5. Update Firestore with Answer
       const callRef = doc(db, "chats", config.roomKey, "calls", callId);
       await updateDoc(callRef, {
         answer: { type: answerDescription.type, sdp: answerDescription.sdp },
         status: 'answered'
       });
 
-      // 7. Update UI
+      // 6. Update UI
       setViewState({
         status: 'connected',
         callId: callId,
@@ -283,7 +275,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       });
       setIncomingData(null); // Clear incoming screen
 
-      // 8. Listen for Remote Candidates (Offer Candidates)
+      // 7. Listen for Remote Candidates (Offer Candidates)
       const candidatesQuery = query(collection(db, "chats", config.roomKey, "calls", callId, "offerCandidates"));
       const unsubCandidates = onSnapshot(candidatesQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
@@ -295,7 +287,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       });
       unsubscribeRefs.current.push(unsubCandidates);
 
-      // 9. Listen for End
+      // 8. Listen for End
       const unsubDoc = onSnapshot(callRef, (snapshot) => {
           if (snapshot.data()?.status === 'ended') {
               cleanup();
@@ -355,7 +347,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
            localVideoRef.current.srcObject = localStream.current;
            localVideoRef.current.muted = true;
        }
-       // Attach Remote (if already exists)
+       // Attach Remote (if already exists from ontrack)
        if (remoteVideoRef.current && remoteStream.current) {
            remoteVideoRef.current.srcObject = remoteStream.current;
            remoteVideoRef.current.play().catch(e => console.log("Remote play error", e));
@@ -408,7 +400,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
           localStream.current.getVideoTracks().forEach(t => t.stop());
           
           const newStream = await navigator.mediaDevices.getUserMedia({
-              audio: true, // Keep audio flowing via this stream or rely on existing audio track
+              audio: true, // Keep audio flowing
               video: { facingMode: newMode }
           });
           
@@ -418,11 +410,6 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
               const sender = pc.current.getSenders().find(s => s.track?.kind === 'video');
               if (sender) sender.replaceTrack(videoTrack);
           }
-          
-          // Update refs
-          const audioTrack = localStream.current.getAudioTracks()[0];
-          // Re-combine if needed, but usually getUM returns a new audio track too.
-          // Simpler to just switch to new stream entirely for local view.
           
           localStream.current = newStream;
           setFacingMode(newMode);
