@@ -32,6 +32,7 @@ export interface Message {
   isEdited?: boolean;
   reactions?: { [emoji: string]: string[] }; // Key: emoji char, Value: array of uids
   replyTo?: ReplyInfo | null;
+  type?: 'text' | 'system'; // Added system type
 }
 
 export interface ChatConfig {
@@ -61,5 +62,6 @@ export interface CallData {
   status: 'offering' | 'answered' | 'ended' | 'declined';
   offer?: any;
   answer?: any;
+  renegotiating?: any;
   createdAt: any;
 }
