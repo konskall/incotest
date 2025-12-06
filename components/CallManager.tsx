@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff, RotateCcw, X, User as UserIcon, AlertCircle, Volume2, VolumeX, Signal, Wifi, WifiOff } from 'lucide-react';
+import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff, RotateCcw, X, User as UserIcon, AlertCircle, Volume2, VolumeX, Signal, WifiOff } from 'lucide-react';
 import { db } from '../services/firebase';
 import { collection, doc, onSnapshot, addDoc, updateDoc, serverTimestamp, query, where, setDoc } from 'firebase/firestore';
 import { User, ChatConfig } from '../types';
@@ -646,25 +646,6 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
                       playsInline 
                       className={`w-full h-full object-contain ${showRemoteVideo ? '' : 'hidden'}`} 
                   />
-
-                  {/* Network Quality Indicator */}
-                  {viewState.status === 'connected' && networkQuality !== 'good' && (
-                      <div className="absolute top-20 left-4 z-50 flex items-center gap-2 bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10 animate-pulse">
-                          {networkQuality === 'bad' ? (
-                              <WifiOff size={16} className="text-red-500" />
-                          ) : (
-                              <Signal size={16} className="text-yellow-500" />
-                          )}
-                          <div className="flex flex-col">
-                              <span className={`text-xs font-bold ${networkQuality === 'bad' ? 'text-red-400' : 'text-yellow-400'}`}>
-                                  Poor Connection
-                              </span>
-                              <span className="text-[10px] text-white/70">
-                                  {networkStats.loss > 0 ? `Loss: ${networkStats.loss.toFixed(0)}%` : `Ping: ${networkStats.rtt.toFixed(0)}ms`}
-                              </span>
-                          </div>
-                      </div>
-                  )}
                   
                   {/* Placeholder / Audio View */}
                   {(!showRemoteVideo) && (
