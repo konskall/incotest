@@ -56,6 +56,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   // --- DOM Refs ---
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null); // Dedicated Audio Element
 
   // ============================================================
   // CLEANUP
@@ -98,15 +99,16 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
     setIsMuted(false);
     setIsVideoOff(false);
     
+    // Reset media elements
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
   }, []);
 
   // ============================================================
   // MEDIA HANDLING
   // ============================================================
   const getMediaStream = async (type: 'audio' | 'video', preferredMode: 'user' | 'environment') => {
-      // Desktop often requires HTTPS for media access
       const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
       const isSecure = location.protocol === 'https:';
       if (!isLocalhost && !isSecure) {
@@ -117,23 +119,27 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
 
       let constraints: MediaStreamConstraints;
 
+      // Always ask for audio with echo cancellation
+      const audioConstraints = { 
+          echoCancellation: true, 
+          noiseSuppression: true, 
+          autoGainControl: true 
+      };
+
       if (type === 'video') {
           if (isMobile) {
               constraints = {
-                  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                  audio: audioConstraints,
                   video: { facingMode: preferredMode }
               };
           } else {
               constraints = {
-                  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                  video: true
+                  audio: audioConstraints,
+                  video: { width: { ideal: 1280 }, height: { ideal: 720 } }
               };
           }
       } else {
-          constraints = { 
-              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
-              video: false 
-          };
+          constraints = { audio: audioConstraints, video: false };
       }
 
       try {
@@ -162,28 +168,24 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       });
     }
 
-    // B. Handle Remote Stream (Key Fix for Audio)
+    // B. Handle Remote Stream
     newPC.ontrack = (event) => {
-      console.log(`[WebRTC] Received remote track: ${event.track.kind}`);
-      
-      // Use the stream provided by the browser to ensure sync
+      console.log(`[WebRTC] Remote track received: ${event.track.kind}`);
       const stream = event.streams[0];
       
       if (stream) {
           remoteStream.current = stream;
-          
-          if (remoteVideoRef.current) {
+
+          // 1. Always attach to Audio Element for sound
+          if (remoteAudioRef.current) {
+              remoteAudioRef.current.srcObject = stream;
+              remoteAudioRef.current.play().catch(e => console.error("Audio play failed", e));
+          }
+
+          // 2. Attach to Video Element if it's a video track
+          if (event.track.kind === 'video' && remoteVideoRef.current) {
               remoteVideoRef.current.srcObject = stream;
-              // Explicitly unmute and play
-              remoteVideoRef.current.muted = false;
-              remoteVideoRef.current.volume = 1.0;
-              
-              const playPromise = remoteVideoRef.current.play();
-              if (playPromise !== undefined) {
-                  playPromise.catch(e => {
-                      console.error("Auto-play failed (likely policy). User interaction needed.", e);
-                  });
-              }
+              remoteVideoRef.current.play().catch(e => console.error("Video play failed", e));
           }
       }
     };
@@ -200,11 +202,12 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   }, [config.roomKey]);
 
   // ============================================================
-  // CALL LOGIC
+  // CALL ACTIONS
   // ============================================================
   const startCall = async (targetUid: string, targetName: string, targetAvatar: string, type: 'audio' | 'video') => {
     try {
       onCloseParticipants();
+      initAudio(); // Wake up AudioContext
       
       const stream = await getMediaStream(type, facingMode);
       localStream.current = stream;
@@ -283,8 +286,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
     const offer = incomingData.offer;
 
     try {
-      // Crucial: Unlock Audio Context on user gesture
-      initAudio(); 
+      initAudio(); // Wake up AudioContext
       if (ringtone.current) {
           ringtone.current.pause();
           ringtone.current = null;
@@ -359,11 +361,10 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
           const data = change.doc.data();
           setIncomingData({ id: change.doc.id, ...data });
           
-          // Play Ringtone
           initAudio();
           const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
           audio.loop = true;
-          audio.play().catch(() => {});
+          audio.play().catch(e => console.log("Audio play error", e));
           ringtone.current = audio;
         }
         if (change.type === 'removed') {
@@ -376,27 +377,14 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
     return () => unsubscribe();
   }, [config.roomKey, user.uid, viewState.status]);
 
-  // --- Force Attach/Re-attach Stream on State Change ---
+  // Ensure local video is attached when state changes
   useEffect(() => {
-    if (viewState.status === 'connected' || viewState.status === 'calling') {
-       // Local Stream
-       if (localVideoRef.current && localStream.current) {
-           localVideoRef.current.srcObject = localStream.current;
-           localVideoRef.current.muted = true; // Mute local to avoid feedback
-       }
-       // Remote Stream
-       if (remoteVideoRef.current && remoteStream.current) {
-           remoteVideoRef.current.srcObject = remoteStream.current;
-           remoteVideoRef.current.muted = false; // Ensure NOT muted
-           remoteVideoRef.current.volume = 1.0;
-           remoteVideoRef.current.play().catch(e => console.log("Remote play error:", e));
-       }
+    if ((viewState.status === 'connected' || viewState.status === 'calling') && localVideoRef.current && localStream.current) {
+        localVideoRef.current.srcObject = localStream.current;
+        localVideoRef.current.muted = true;
     }
   }, [viewState.status, viewState.type]);
 
-  // ============================================================
-  // ACTIONS
-  // ============================================================
   const handleHangup = async () => {
     if (viewState.callId) {
         const callRef = doc(db, "chats", config.roomKey, "calls", viewState.callId);
@@ -442,7 +430,6 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
               if (sender) sender.replaceTrack(videoTrack);
           }
           
-          // Combine new video with existing audio
           const audioTracks = localStream.current.getAudioTracks();
           if(audioTracks.length > 0) {
               newStream.addTrack(audioTracks[0]);
@@ -526,15 +513,18 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       
       return (
           <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col">
+              {/* Dedicated Audio Element for Remote Sound */}
+              <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+
               {/* Main Media Area */}
               <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center">
                   
-                  {/* Remote Video - Used for both Audio and Video calls to handle the stream */}
+                  {/* Remote Video */}
                   <video 
                       ref={remoteVideoRef} 
                       autoPlay 
                       playsInline 
-                      className={`w-full h-full object-contain ${showRemoteVideo ? '' : 'opacity-0 absolute pointer-events-none h-1 w-1'}`} 
+                      className={`w-full h-full object-contain ${showRemoteVideo ? '' : 'hidden'}`} 
                   />
                   
                   {/* Placeholder / Audio View */}
