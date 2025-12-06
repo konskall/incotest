@@ -32,14 +32,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
   const [showParticipantsList, setShowParticipantsList] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   
+  // Room & Creator State
+  const [isRoomReady, setIsRoomReady] = useState(false);
+  const [roomCreatorId, setRoomCreatorId] = useState<string | null>(null);
+  
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
   });
 
-  // New state to prevent listeners from attaching before room exists
-  const [isRoomReady, setIsRoomReady] = useState(false);
-  
   // Edit & Reply State
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -104,6 +105,24 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     setShowSettingsMenu(false); // Close menu on selection
   };
 
+  // Helper to send system messages
+  const sendSystemMessage = async (text: string) => {
+    if (!config.roomKey) return;
+    try {
+        await addDoc(collection(db, "chats", config.roomKey, "messages"), {
+            text: encodeMessage(text),
+            uid: "system",
+            username: "System",
+            avatarURL: "",
+            createdAt: serverTimestamp(),
+            type: 'system',
+            reactions: {}
+        });
+    } catch (e) {
+        console.error("Failed to send system message", e);
+    }
+  };
+
   // 1. Authentication & Network Status & Feature Detection
   useEffect(() => {
     const unsubAuth = auth.onAuthStateChanged((u) => {
@@ -137,28 +156,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     };
   }, []);
 
-  // 1.1 Unlock Audio on First Interaction (Critical for Desktop Autoplay Policy)
-  useEffect(() => {
-      const unlockAudioContext = () => {
-          initAudio();
-          // Remove listeners once triggered
-          document.removeEventListener('click', unlockAudioContext);
-          document.removeEventListener('keydown', unlockAudioContext);
-          document.removeEventListener('touchstart', unlockAudioContext);
-      };
-
-      document.addEventListener('click', unlockAudioContext);
-      document.addEventListener('keydown', unlockAudioContext);
-      document.addEventListener('touchstart', unlockAudioContext);
-
-      return () => {
-          document.removeEventListener('click', unlockAudioContext);
-          document.removeEventListener('keydown', unlockAudioContext);
-          document.removeEventListener('touchstart', unlockAudioContext);
-      };
-  }, []);
-
-  // 1.5 Initialize Room Document
+  // 1.5 Initialize Room Document and get Creator
   useEffect(() => {
     const checkAndCreateRoom = async () => {
       if (!user || !config.roomKey) return;
@@ -169,7 +167,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
         const roomDoc = await getDoc(roomRef);
         
         if (roomDoc.exists()) {
-           // Room exists, just update timestamp
+           // Room exists, just update timestamp and get creator
+           const data = roomDoc.data();
+           setRoomCreatorId(data.createdBy || null);
+           
            await updateDoc(roomRef, {
              lastActive: serverTimestamp()
            });
@@ -182,6 +183,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
              createdBy: user.uid,
              lastActive: serverTimestamp()
            });
+           setRoomCreatorId(user.uid);
         }
         setIsRoomReady(true);
       } catch (error) {
@@ -192,6 +194,26 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     
     checkAndCreateRoom();
   }, [user, config.roomKey, config.roomName]);
+
+  // Handle Join Message (Once per session per room)
+  useEffect(() => {
+      if (isRoomReady && user && config.roomKey) {
+          const sessionKey = `joined_${config.roomKey}`;
+          if (!sessionStorage.getItem(sessionKey)) {
+              sendSystemMessage(`${config.username} joined the room`);
+              sessionStorage.setItem(sessionKey, 'true');
+          }
+      }
+  }, [isRoomReady, user, config.roomKey, config.username]);
+
+  // Handle Manual Exit
+  const handleExitChat = async () => {
+      if (config.roomKey) {
+          await sendSystemMessage(`${config.username} left the room`);
+          sessionStorage.removeItem(`joined_${config.roomKey}`);
+      }
+      onExit();
+  };
 
   // NEW: Listen for Room Deletion (Kick functionality)
   useEffect(() => {
@@ -343,8 +365,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
       for (const change of snapshot.docChanges()) {
         if (change.type === "added") {
            const data = change.doc.data();
-           // Ensure it's not a local optimistic write, not our own message, and NOT the initial history load
-           if (!snapshot.metadata.fromCache && data.uid !== user.uid) {
+           // Ensure it's not a local optimistic write, not our own message, not a system message, and NOT the initial history load
+           if (!snapshot.metadata.fromCache && data.uid !== user.uid && data.type !== 'system') {
                hasNewMessageFromOthers = true;
                lastMsg = { 
                    id: change.doc.id, 
@@ -356,7 +378,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                    attachment: data.attachment,
                    location: data.location,
                    reactions: data.reactions,
-                   replyTo: data.replyTo
+                   replyTo: data.replyTo,
+                   type: data.type
                };
            }
         }
@@ -375,7 +398,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
           location: data.location,
           isEdited: data.isEdited,
           reactions: data.reactions || {},
-          replyTo: data.replyTo
+          replyTo: data.replyTo,
+          type: data.type
         });
       });
 
@@ -650,6 +674,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                 avatarURL: config.avatarURL,
                 text: encodeMessage("📍 Shared a location"),
                 createdAt: serverTimestamp(),
+                type: 'text',
                 reactions: {},
                 location: locationData,
                 replyTo: replyingTo ? {
@@ -727,6 +752,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             avatarURL: config.avatarURL,
             text: encodeMessage(textToSend),
             createdAt: serverTimestamp(),
+            type: 'text',
             reactions: {},
             replyTo: replyingTo ? {
                 id: replyingTo.id,
@@ -825,6 +851,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             users={participants}
             showParticipants={showParticipantsList}
             onCloseParticipants={() => setShowParticipantsList(false)}
+            roomCreatorId={roomCreatorId}
           />
       )}
 
@@ -882,7 +909,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             {canVibrate && (
                 <button 
                     onClick={() => setVibrationEnabled(!vibrationEnabled)}
-                    className={`hidden sm:block p-2 rounded-lg transition ${vibrationEnabled ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                    className={`hidden sm:block p-2 rounded-lg transition ${vibrationEnabled ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                     title={vibrationEnabled ? "Vibration Enabled" : "Enable Vibration"}
                 >
                     {vibrationEnabled ? <Vibrate size={20} /> : <VibrateOff size={20} />}
@@ -897,7 +924,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             </button>
             <button 
                 onClick={toggleNotifications}
-                className={`hidden sm:block p-2 rounded-lg transition ${notificationsEnabled ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                className={`hidden sm:block p-2 rounded-lg transition ${notificationsEnabled ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 title={notificationsEnabled ? "Notifications Active" : "Enable Notifications"}
             >
                 {notificationsEnabled ? <Bell size={20} /> : <BellOff size={20} />}
@@ -950,17 +977,18 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
                 </>
             )}
 
-            {/* Delete button only for creator */}
-            {user && config.roomKey.includes(user.uid) /* NOTE: This is a placeholder check. Ideally we store creator in config or check doc */ }
+            {/* Delete button only for creator - verified check */}
+            {user && roomCreatorId === user.uid && (
+                <button 
+                    onClick={() => setShowDeleteModal(true)}
+                    className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                    title="Delete Chat"
+                >
+                    <Trash2 size={20} />
+                </button>
+            )}
             <button 
-                onClick={() => setShowDeleteModal(true)}
-                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
-                title="Delete Chat"
-            >
-                <Trash2 size={20} />
-            </button>
-            <button 
-                onClick={onExit}
+                onClick={handleExitChat}
                 className="p-2 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition"
                 title="Exit"
             >
