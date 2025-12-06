@@ -102,21 +102,6 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
 
   const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
-  const scrollToMessage = (id: string) => {
-      const el = document.getElementById(`msg-${id}`);
-      if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Highlight effect
-          const bubble = el.querySelector('.chat-bubble');
-          if (bubble) {
-              bubble.classList.add('ring-2', 'ring-offset-2', 'ring-blue-400');
-              setTimeout(() => {
-                  bubble.classList.remove('ring-2', 'ring-offset-2', 'ring-blue-400');
-              }, 1500);
-          }
-      }
-  };
-
   const formatTime = (timestamp: any) => {
     if (!timestamp) return '...'; // Pending
     try {
@@ -135,6 +120,33 @@ const MessageItem = React.memo(({ msg, isMe, currentUid, onEdit, onReact, onRepl
   };
 
   const timeString = formatTime(msg.createdAt);
+
+  // System Message Rendering
+  if (msg.type === 'system') {
+      return (
+          <div className="flex justify-center w-full my-4 opacity-70">
+              <div className="bg-slate-200/50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 text-xs py-1 px-3 rounded-full flex items-center gap-2 border border-slate-200/50 dark:border-slate-700/50 shadow-sm backdrop-blur-sm">
+                  <span className="font-semibold">{msg.text}</span>
+                  <span className="text-[10px] opacity-60">• {timeString}</span>
+              </div>
+          </div>
+      );
+  }
+
+  const scrollToMessage = (id: string) => {
+      const el = document.getElementById(`msg-${id}`);
+      if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Highlight effect
+          const bubble = el.querySelector('.chat-bubble');
+          if (bubble) {
+              bubble.classList.add('ring-2', 'ring-offset-2', 'ring-blue-400');
+              setTimeout(() => {
+                  bubble.classList.remove('ring-2', 'ring-offset-2', 'ring-blue-400');
+              }, 1500);
+          }
+      }
+  };
 
   const renderContent = (text: string) => {
     if (!text) return null;
