@@ -23,6 +23,7 @@ export function generateRoomKey(pin: string, roomName: string): string {
 
 // Singleton AudioContext to prevent running out of hardware contexts
 let audioCtx: AudioContext | null = null;
+let ringNodes: AudioNode[] = []; // Store active ringtone nodes
 
 export function initAudio() {
   try {
@@ -48,8 +49,9 @@ export function initAudio() {
 export function playBeep() {
   try {
     if (!audioCtx) {
-       audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+       initAudio();
     }
+    if (!audioCtx) return;
     
     // Resume if suspended (common in browsers preventing autoplay)
     if (audioCtx.state === 'suspended') {
@@ -68,11 +70,65 @@ export function playBeep() {
     
     oscillator.start();
     oscillator.stop(audioCtx.currentTime + 0.18);
-    
-    // Note: We do NOT close the context anymore, we keep it alive for the session.
   } catch (e) {
     console.log('Audio not supported or blocked');
   }
+}
+
+// Starts a persistent ringtone (phone ringing sound)
+export function startRingtone() {
+    try {
+        if (!audioCtx) initAudio();
+        if (!audioCtx) return;
+        
+        // Ensure context is running (crucial for iOS)
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        stopRingtone(); // Stop any existing ring
+
+        const t = audioCtx.currentTime;
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.25; // Moderate volume
+        gain.connect(audioCtx.destination);
+        ringNodes.push(gain);
+
+        // Schedule a repeating ring pattern for 45 seconds
+        // Pattern: "Drring-Drring" ... pause ...
+        for (let i = 0; i < 15; i++) {
+            const start = t + (i * 3); // Loop every 3s
+            
+            // Tone 1 (0.4s)
+            createRingOsc(start, 0.4, 600, gain);
+            // Tone 2 (0.4s)
+            createRingOsc(start + 0.5, 0.4, 500, gain);
+        }
+    } catch (e) {
+        console.error("Ringtone error:", e);
+    }
+}
+
+function createRingOsc(time: number, duration: number, freq: number, dest: AudioNode) {
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, time);
+    // Slight modulation for a "phone" feel
+    osc.frequency.linearRampToValueAtTime(freq * 0.95, time + duration);
+    
+    osc.connect(dest);
+    osc.start(time);
+    osc.stop(time + duration);
+    ringNodes.push(osc);
+}
+
+export function stopRingtone() {
+    ringNodes.forEach(n => {
+        try { 
+            if (n instanceof OscillatorNode) n.stop();
+            n.disconnect(); 
+        } catch(e) {}
+    });
+    ringNodes = [];
 }
 
 // Helper to extract YouTube ID
