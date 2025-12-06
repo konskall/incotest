@@ -193,28 +193,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
     checkAndCreateRoom();
   }, [user, config.roomKey, config.roomName]);
 
-  // 1.6 Permission Priming (NEW: Ask once on load so we don't ask every call)
-  useEffect(() => {
-    if (isRoomReady) {
-       const primePermissions = async () => {
-           try {
-               // We request permissions immediately when entering the room.
-               // This triggers the browser prompt once. 
-               // Once granted, the browser saves this preference for the domain/session.
-               const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-               
-               // Immediately stop the tracks so the camera light goes off.
-               // We just wanted the permission grant.
-               stream.getTracks().forEach(track => track.stop());
-           } catch (e) {
-               console.log("Permissions priming deferred or denied:", e);
-           }
-       };
-       
-       primePermissions();
-    }
-  }, [isRoomReady]);
-
   // NEW: Listen for Room Deletion (Kick functionality)
   useEffect(() => {
     // Only listen if room is ready and WE are not the ones currently deleting it
@@ -904,7 +882,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ config, onExit }) => {
             {canVibrate && (
                 <button 
                     onClick={() => setVibrationEnabled(!vibrationEnabled)}
-                    className={`hidden sm:block p-2 rounded-lg transition ${vibrationEnabled ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                    className={`hidden sm:block p-2 rounded-lg transition ${vibrationEnabled ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                     title={vibrationEnabled ? "Vibration Enabled" : "Enable Vibration"}
                 >
                     {vibrationEnabled ? <Vibrate size={20} /> : <VibrateOff size={20} />}
