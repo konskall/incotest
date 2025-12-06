@@ -31,7 +31,7 @@ export function initAudio() {
        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+        audioCtx.resume().catch(console.error);
     }
     // Play a silent oscillator to fully unlock audio on iOS/Chrome without making noise
     const oscillator = audioCtx.createOscillator();
@@ -55,7 +55,7 @@ export function playBeep() {
     
     // Resume if suspended (common in browsers preventing autoplay)
     if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+        audioCtx.resume().catch(console.error);
     }
 
     const oscillator = audioCtx.createOscillator();
@@ -82,13 +82,14 @@ export function startRingtone() {
         if (!audioCtx) return;
         
         // Ensure context is running (crucial for iOS)
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(console.error);
 
         stopRingtone(); // Stop any existing ring
 
         const t = audioCtx.currentTime;
         const gain = audioCtx.createGain();
-        gain.gain.value = 0.25; // Moderate volume
+        // Increased gain for visibility on desktop speakers
+        gain.gain.value = 0.5; 
         gain.connect(audioCtx.destination);
         ringNodes.push(gain);
 
