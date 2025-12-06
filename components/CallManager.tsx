@@ -145,20 +145,23 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
           throw new Error("WebRTC requires HTTPS. Please deploy with SSL or use localhost.");
       }
 
-      // Detect Mobile Device to optionally use facingMode
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      // Enhanced Mobile Detection (Fix for iPad/Tablets being detected as desktop)
+      // Check for standard mobile UA OR MacIntel with touch points (iPadOS 13+)
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+        || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
       // Constraints Strategy:
       let constraints: MediaStreamConstraints;
 
       if (type === 'video') {
           if (isMobile) {
+              // On mobile/tablet, respect facing mode for camera switching
               constraints = {
                   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
                   video: { facingMode: preferredMode }
               };
           } else {
-              // Desktop: Simple constraints often work better
+              // Desktop: Simple constraints often work better, prioritize resolution
               constraints = {
                   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
                   video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
@@ -459,7 +462,9 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       const newMode = facingMode === 'user' ? 'environment' : 'user';
       
       try {
+          // Stop current tracks to release camera hardware (crucial for iOS)
           localStream.current.getVideoTracks().forEach(t => t.stop());
+          
           const newStream = await getMediaStream('video', newMode);
           if (!newStream) return;
           
@@ -469,9 +474,16 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
               if (sender) sender.replaceTrack(videoTrack);
           }
           
+          // Re-add audio tracks if they exist
           const audioTracks = localStream.current.getAudioTracks();
           if(audioTracks.length > 0) {
-              newStream.addTrack(audioTracks[0]);
+              // Note: We don't need to add audio to newStream if we just want to replace video in PC
+              // But for local state consistency, we keep them together.
+              // However, getMediaStream for video switching might not return audio tracks depending on implementation.
+              // Let's ensure we keep the audio.
+              if (newStream.getAudioTracks().length === 0) {
+                  newStream.addTrack(audioTracks[0]);
+              }
           }
 
           localStream.current = newStream;
