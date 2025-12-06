@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff, RotateCcw, X, User as UserIcon } from 'lucide-react';
+import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff, RotateCcw, X, User as UserIcon, AlertCircle } from 'lucide-react';
 import { db } from '../services/firebase';
 import { collection, doc, onSnapshot, addDoc, updateDoc, serverTimestamp, query, where, setDoc } from 'firebase/firestore';
 import { User, ChatConfig } from '../types';
 import { initAudio } from '../utils/helpers';
 
+// Public Google STUN servers are reliable for most P2P scenarios
 const ICE_SERVERS = {
   iceServers: [
     { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
@@ -30,7 +31,7 @@ interface CallState {
 }
 
 const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseParticipants, showParticipants }) => {
-  // --- UI State (Triggers Renders) ---
+  // --- UI State ---
   const [viewState, setViewState] = useState<CallState>({
     status: 'idle',
     callId: null,
@@ -42,15 +43,15 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
-  const [incomingData, setIncomingData] = useState<any>(null); // Store raw incoming call data
+  const [incomingData, setIncomingData] = useState<any>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // --- Refs (Logic Persistence - No Renders) ---
+  // --- Logic Refs (No Re-renders) ---
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
   const remoteStream = useRef<MediaStream | null>(null);
   const unsubscribeRefs = useRef<(() => void)[]>([]);
-  const candidateQueue = useRef<RTCIceCandidate[]>([]);
   const ringtone = useRef<HTMLAudioElement | null>(null);
 
   // --- DOM Refs ---
@@ -58,14 +59,14 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   // ============================================================
-  // HELPER: Clean up everything
+  // CLEANUP
   // ============================================================
   const cleanup = useCallback(() => {
     // 1. Stop Media Tracks
     if (localStream.current) {
       localStream.current.getTracks().forEach(track => {
           track.stop();
-          track.enabled = false; // Explicitly disable
+          track.enabled = false;
       });
       localStream.current = null;
     }
@@ -89,7 +90,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       ringtone.current = null;
     }
 
-    // 5. Reset State
+    // 5. Reset UI
     setViewState({
       status: 'idle',
       callId: null,
@@ -99,73 +100,103 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       type: 'video'
     });
     setIncomingData(null);
-    candidateQueue.current = [];
+    setErrorMsg(null);
     setIsMuted(false);
     setIsVideoOff(false);
     
-    // Reset video elements
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
   }, []);
 
   // ============================================================
-  // HELPER: Get User Media (Robust)
+  // MEDIA HANDLING (The Critical Part for Desktop)
   // ============================================================
-  const getMediaStream = async (type: 'audio' | 'video', mode: 'user' | 'environment') => {
-      // 1. Check for Secure Context
-      if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-          throw new Error("WebRTC requires HTTPS or localhost. Media devices are blocked on HTTP.");
+  const getMediaStream = async (type: 'audio' | 'video', preferredMode: 'user' | 'environment') => {
+      console.log(`[Media] Requesting ${type} stream...`);
+      
+      // Check for insecure context (HTTP) which blocks WebRTC on non-localhost
+      const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      const isSecure = location.protocol === 'https:';
+      if (!isLocalhost && !isSecure) {
+          throw new Error("WebRTC requires HTTPS. Please deploy with SSL or use localhost.");
       }
 
-      // 2. Try Ideal Constraints (Mobile Friendly)
-      try {
-          const constraints = {
-              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-              video: type === 'video' ? { facingMode: mode } : false
-          };
-          return await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (err) {
-          console.warn("Ideal constraints failed, trying generic...", err);
-          // 3. Fallback to Basic Constraints (Desktop Friendly)
-          try {
-             return await navigator.mediaDevices.getUserMedia({
-                 audio: true,
-                 video: type === 'video' // Just ask for any video
-             });
-          } catch (finalErr) {
-              console.error("Media access completely failed", finalErr);
-              throw finalErr;
+      // Detect Mobile Device
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+      // Constraints Strategy:
+      // 1. Desktop: Don't use facingMode (it causes OverconstrainedError). Use simple constraints.
+      // 2. Mobile: Use facingMode.
+      
+      let constraints: MediaStreamConstraints;
+
+      if (type === 'video') {
+          if (isMobile) {
+              constraints = {
+                  audio: { echoCancellation: true, noiseSuppression: true },
+                  video: { facingMode: preferredMode }
+              };
+          } else {
+              // Desktop: Simple constraints
+              constraints = {
+                  audio: { echoCancellation: true, noiseSuppression: true },
+                  video: true 
+              };
           }
+      } else {
+          constraints = { audio: { echoCancellation: true, noiseSuppression: true }, video: false };
+      }
+
+      try {
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          console.log("[Media] Got stream:", stream.id);
+          return stream;
+      } catch (err: any) {
+          console.warn("[Media] Ideal constraints failed:", err.name, err.message);
+          
+          // Fallback: Try bare minimum audio/video if specific constraints failed
+          if (type === 'video') {
+              try {
+                  console.log("[Media] Trying fallback constraints...");
+                  return await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+              } catch (err2) {
+                  console.error("[Media] Fallback failed:", err2);
+              }
+          }
+          throw err;
       }
   };
 
   // ============================================================
-  // HELPER: Initialize Peer Connection
+  // PEER CONNECTION SETUP
   // ============================================================
   const createPC = useCallback((callId: string, isCaller: boolean) => {
     const newPC = new RTCPeerConnection(ICE_SERVERS);
     pc.current = newPC;
 
-    // A. Add Local Tracks
+    // A. Add Local Tracks to PC
     if (localStream.current) {
       localStream.current.getTracks().forEach(track => {
         newPC.addTrack(track, localStream.current!);
       });
     }
 
-    // B. Handle Remote Tracks
+    // B. Handle Remote Stream
     newPC.ontrack = (event) => {
-      console.log("Remote track received:", event.streams[0].id);
+      console.log("[WebRTC] Remote track received:", event.track.kind);
       const stream = event.streams[0];
-      remoteStream.current = stream;
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = stream;
-        // Desktop browsers often block autoplay if not muted or interacted with
-        remoteVideoRef.current.play().catch(e => console.error("Remote play error", e));
+      if (stream) {
+          remoteStream.current = stream;
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = stream;
+            // Force play for browsers that block autoplay
+            remoteVideoRef.current.play().catch(e => console.error("AutoPlay blocked", e));
+          }
       }
     };
 
-    // C. ICE Candidates logic
+    // C. Handle ICE Candidates
+    // We send candidates to a sub-collection in Firestore
     newPC.onicecandidate = (event) => {
       if (event.candidate) {
           const collectionName = isCaller ? 'offerCandidates' : 'answerCandidates';
@@ -173,35 +204,47 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       }
     };
 
+    // D. Connection State Logging
+    newPC.onconnectionstatechange = () => {
+        console.log("[WebRTC] Connection State:", newPC.connectionState);
+        if (newPC.connectionState === 'disconnected' || newPC.connectionState === 'failed') {
+            // Optional: Auto-reconnect logic could go here
+        }
+    };
+
     return newPC;
   }, [config.roomKey]);
 
   // ============================================================
-  // ACTION: Start Call (Caller Side)
+  // START CALL (Caller)
   // ============================================================
   const startCall = async (targetUid: string, targetName: string, targetAvatar: string, type: 'audio' | 'video') => {
     try {
       onCloseParticipants();
-      initAudio(); // Unlock audio context
-
+      
       // 1. Get Local Media
       const stream = await getMediaStream(type, facingMode);
-      if (!stream) throw new Error("No stream acquired");
-      
       localStream.current = stream;
 
-      // 2. Create Firestore Document first to get ID
+      // 2. Setup UI State
       const callDocRef = doc(collection(db, "chats", config.roomKey, "calls"));
       const callId = callDocRef.id;
+      
+      setViewState({
+        status: 'calling',
+        callId: callId,
+        isCaller: true,
+        remoteName: targetName,
+        remoteAvatar: targetAvatar,
+        type: type
+      });
 
-      // 3. Setup PC
+      // 3. Create PC & Offer
       const connection = createPC(callId, true);
-
-      // 4. Create Offer
       const offerDescription = await connection.createOffer();
       await connection.setLocalDescription(offerDescription);
 
-      // 5. Write Offer to Firestore
+      // 4. Write Offer to Firestore
       const callData = {
         id: callId,
         callerId: user.uid,
@@ -215,55 +258,49 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       };
       await setDoc(callDocRef, callData);
 
-      // 6. Update UI
-      setViewState({
-        status: 'calling',
-        callId: callId,
-        isCaller: true,
-        remoteName: targetName,
-        remoteAvatar: targetAvatar,
-        type: type
-      });
-
-      // 7. Listen for Answer
+      // 5. Listen for Answer
       const unsubDoc = onSnapshot(callDocRef, (snapshot) => {
         const data = snapshot.data();
-        if (!data) return; // Call deleted
+        if (!data) return; 
 
         if (!connection.currentRemoteDescription && data?.answer) {
           const answerDescription = new RTCSessionDescription(data.answer);
           connection.setRemoteDescription(answerDescription);
           setViewState(prev => ({ ...prev, status: 'connected' }));
         }
-        // Hangup detected
+        
         if (data.status === 'ended' || data.status === 'declined') {
           cleanup();
         }
       });
       unsubscribeRefs.current.push(unsubDoc);
 
-      // 8. Listen for Remote Candidates (Answer Candidates)
+      // 6. Listen for Remote ICE Candidates (from Callee)
       const candidatesQuery = query(collection(db, "chats", config.roomKey, "calls", callId, "answerCandidates"));
       const unsubCandidates = onSnapshot(candidatesQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const candidate = new RTCIceCandidate(change.doc.data());
-            // Modern WebRTC handles buffering, but simple catch protects against state errors
-            connection.addIceCandidate(candidate).catch(e => console.log("Candidate add failed", e));
+            connection.addIceCandidate(candidate).catch(console.error);
           }
         });
       });
       unsubscribeRefs.current.push(unsubCandidates);
 
     } catch (error: any) {
-      console.error("Error starting call:", error);
-      alert(`Could not start call: ${error.message || "Check Permissions"}`);
-      cleanup();
+      console.error("Start Call Error:", error);
+      setErrorMsg(error.message || "Failed to start call");
+      // Don't fully cleanup, let user see error
+      if (localStream.current) {
+          localStream.current.getTracks().forEach(t => t.stop());
+          localStream.current = null;
+      }
+      setTimeout(() => cleanup(), 3000);
     }
   };
 
   // ============================================================
-  // ACTION: Answer a Call (Callee Side)
+  // ANSWER CALL (Callee)
   // ============================================================
   const answerCall = async () => {
     if (!incomingData) return;
@@ -272,33 +309,34 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
     const offer = incomingData.offer;
 
     try {
-      initAudio();
-      if (ringtone.current) ringtone.current.pause();
+      initAudio(); // Initialize audio context for mobile browsers
+      if (ringtone.current) {
+          ringtone.current.pause();
+          ringtone.current = null;
+      }
 
       // 1. Get Local Media
       const stream = await getMediaStream(incomingData.type, facingMode);
-      if (!stream) throw new Error("No stream acquired");
-
       localStream.current = stream;
 
       // 2. Setup PC
       const connection = createPC(callId, false);
 
-      // 3. Set Remote Description (The Offer)
+      // 3. Set Remote Description
       await connection.setRemoteDescription(new RTCSessionDescription(offer));
 
       // 4. Create Answer
       const answerDescription = await connection.createAnswer();
       await connection.setLocalDescription(answerDescription);
 
-      // 5. Update Firestore with Answer
+      // 5. Update Firestore
       const callRef = doc(db, "chats", config.roomKey, "calls", callId);
       await updateDoc(callRef, {
         answer: { type: answerDescription.type, sdp: answerDescription.sdp },
         status: 'answered'
       });
 
-      // 6. Update UI
+      // 6. UI Update
       setViewState({
         status: 'connected',
         callId: callId,
@@ -307,9 +345,9 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
         remoteAvatar: incomingData.callerAvatar,
         type: incomingData.type
       });
-      setIncomingData(null); // Clear incoming screen
+      setIncomingData(null); 
 
-      // 7. Listen for Remote Candidates (Offer Candidates)
+      // 7. Listen for Remote Candidates (from Caller)
       const candidatesQuery = query(collection(db, "chats", config.roomKey, "calls", callId, "offerCandidates"));
       const unsubCandidates = onSnapshot(candidatesQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
@@ -321,7 +359,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       });
       unsubscribeRefs.current.push(unsubCandidates);
 
-      // 8. Listen for End
+      // 8. Listen for End Hangup
       const unsubDoc = onSnapshot(callRef, (snapshot) => {
           if (snapshot.data()?.status === 'ended') {
               cleanup();
@@ -330,22 +368,18 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
       unsubscribeRefs.current.push(unsubDoc);
 
     } catch (error: any) {
-      console.error("Error answering call:", error);
-      alert(`Could not answer call: ${error.message || "Check permissions or HTTPS connection"}`);
-      // Don't fully cleanup here, keep the incoming screen so they can try again or reject properly
-      // But stop media if started
-      if(localStream.current) {
-          localStream.current.getTracks().forEach(t => t.stop());
-          localStream.current = null;
-      }
+      console.error("Answer Call Error:", error);
+      setErrorMsg(error.message || "Failed to answer call");
+      setTimeout(() => cleanup(), 3000);
     }
   };
 
   // ============================================================
-  // EFFECT: Global Listener for Incoming Calls
+  // LISTENERS & UI HELPERS
   // ============================================================
+  
+  // Listen for incoming calls
   useEffect(() => {
-    // Only listen if we are idle
     if (viewState.status !== 'idle') return;
 
     const q = query(
@@ -377,31 +411,22 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
     return () => unsubscribe();
   }, [config.roomKey, user.uid, viewState.status]);
 
-  // ============================================================
-  // EFFECT: Update Video Elements (When connected)
-  // ============================================================
+  // Update DOM video elements when streams change or state changes
   useEffect(() => {
     if (viewState.status === 'connected' || viewState.status === 'calling') {
-       // Attach Local
        if (localVideoRef.current && localStream.current) {
            localVideoRef.current.srcObject = localStream.current;
            localVideoRef.current.muted = true;
        }
-       // Attach Remote (if already exists from ontrack)
        if (remoteVideoRef.current && remoteStream.current) {
            remoteVideoRef.current.srcObject = remoteStream.current;
-           remoteVideoRef.current.play().catch(e => console.log("Remote play error", e));
+           remoteVideoRef.current.play().catch(console.error);
        }
     }
   }, [viewState.status, viewState.type]);
 
-
-  // ============================================================
-  // Helper Functions
-  // ============================================================
   const handleHangup = async () => {
     if (viewState.callId) {
-        // Try to notify other peer
         const callRef = doc(db, "chats", config.roomKey, "calls", viewState.callId);
         await updateDoc(callRef, { status: 'ended' }).catch(() => {});
     }
@@ -432,25 +457,20 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
 
   const switchCamera = async () => {
       if (!localStream.current || viewState.type !== 'video') return;
-      
       const newMode = facingMode === 'user' ? 'environment' : 'user';
       
       try {
-          // Stop old video tracks
           localStream.current.getVideoTracks().forEach(t => t.stop());
-          
           const newStream = await getMediaStream('video', newMode);
           if (!newStream) return;
           
-          // Replace track in PeerConnection
           if (pc.current) {
               const videoTrack = newStream.getVideoTracks()[0];
               const sender = pc.current.getSenders().find(s => s.track?.kind === 'video');
               if (sender) sender.replaceTrack(videoTrack);
           }
           
-          // Keep audio track from old stream if possible, or just use new stream
-          // Ideally we mix them, but switching whole stream is safer for simple implementation
+          // Keep old audio track if it exists
           const audioTracks = localStream.current.getAudioTracks();
           if(audioTracks.length > 0) {
               newStream.addTrack(audioTracks[0]);
@@ -462,21 +482,31 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
           if (localVideoRef.current) {
               localVideoRef.current.srcObject = newStream;
           }
-
       } catch (e) {
           console.error("Switch camera failed", e);
       }
   };
 
   // ============================================================
-  // RENDERERS
+  // RENDERING
   // ============================================================
+
+  // 0. Error Toast
+  if (errorMsg) {
+      return (
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] bg-red-500 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+              <AlertCircle size={20} />
+              <span className="text-sm font-medium">{errorMsg}</span>
+              <button onClick={cleanup}><X size={16} /></button>
+          </div>
+      );
+  }
 
   // 1. Incoming Call Screen
   if (incomingData) {
       return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-              <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 w-full max-w-sm text-center border border-white/10 shadow-2xl flex flex-col items-center gap-6 animate-in fade-in zoom-in">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+              <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 w-full max-w-sm text-center border border-white/10 shadow-2xl flex flex-col items-center gap-6 animate-in zoom-in-95 duration-300">
                   <div className="relative">
                       <img 
                         src={incomingData.callerAvatar} 
@@ -500,7 +530,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
                           onClick={handleReject} 
                           className="flex flex-col items-center gap-2 group"
                       >
-                          <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center text-white shadow-lg group-hover:bg-red-600 transition-transform group-hover:scale-110">
+                          <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center text-red-500 border-2 border-red-500/20 group-hover:bg-red-500 group-hover:text-white transition-all duration-300">
                               <PhoneOff size={32} fill="currentColor" />
                           </div>
                           <span className="text-sm text-slate-500 font-medium">Decline</span>
@@ -510,7 +540,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
                           onClick={answerCall} 
                           className="flex flex-col items-center gap-2 group"
                       >
-                          <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg group-hover:bg-green-600 transition-transform group-hover:scale-110 animate-bounce">
+                          <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-green-500/40 group-hover:scale-110 transition-transform duration-300 animate-bounce">
                               {incomingData.type === 'video' ? <Video size={32} fill="currentColor" /> : <Phone size={32} fill="currentColor" />}
                           </div>
                           <span className="text-sm text-slate-500 font-medium">Answer</span>
@@ -559,7 +589,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
 
                   {/* Local Video (PiP) */}
                   {viewState.type === 'video' && (
-                      <div className="absolute top-4 right-4 w-28 sm:w-32 aspect-[3/4] bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-white/10 z-20 transition-all hover:scale-105">
+                      <div className="absolute top-4 right-4 w-28 sm:w-32 aspect-[3/4] bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-white/10 z-20 transition-all hover:scale-105 cursor-pointer">
                           <video 
                             ref={localVideoRef} 
                             autoPlay 
@@ -646,6 +676,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
                         <div className="p-8 text-center text-slate-400 dark:text-slate-500 flex flex-col items-center gap-2">
                             <UserIcon size={40} className="opacity-20" />
                             <p className="text-sm">No one else is here yet.</p>
+                            <p className="text-xs text-slate-400">Share your room PIN!</p>
                         </div>
                     )}
                 </div>
