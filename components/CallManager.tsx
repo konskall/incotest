@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff, RotateCcw, X } from 'lucide-react';
 import { db } from '../services/firebase';
-import { collection, doc, onSnapshot, addDoc, updateDoc, serverTimestamp, query, where, deleteDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, addDoc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { User, ChatConfig } from '../types';
 import { initAudio } from '../utils/helpers';
 
@@ -340,8 +340,7 @@ const CallManager: React.FC<CallManagerProps> = ({ user, config, users, onCloseP
           const callRef = doc(db, "chats", config.roomKey, "calls", activeCall.id);
           try {
             await updateDoc(callRef, { status: 'ended' });
-            // Cleanup old calls after a bit
-            // setTimeout(() => deleteDoc(callRef), 5000); 
+            // Cleanup old calls after a bit is handled by manual deletion if needed or separate cleanup job
           } catch(e) { console.log("Call cleanup error (might already be deleted)", e) }
       }
 
