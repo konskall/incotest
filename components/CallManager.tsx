@@ -8,7 +8,7 @@ import { initAudio } from '../utils/helpers';
 // Public Google STUN servers are reliable for most P2P scenarios
 const ICE_SERVERS = {
   iceServers: [
-    { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+    { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302', 'stun:stun.relay.metered.ca:80'] },
     {
         urls: "turn:standard.relay.metered.ca:80",
         username: "4aa8db5b8a8c31527e2495be",
